@@ -1,0 +1,19 @@
+[package]
+name = "nanors_session"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+nanors_core.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+chrono = { version = "0.4.43", features = ["serde"] }
+anyhow.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "chrono"] }
