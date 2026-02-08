@@ -64,12 +64,12 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Agent { message, model } => {
             let config = Config::load()?;
-            info!("Loaded config from ~/.nanobot/config.json");
+            info!("Loaded config from ~/nanors/config.json");
 
             let provider = ZhipuProvider::new(config.providers.zhipu.api_key);
             let home_dir =
                 dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Cannot find home directory"))?;
-            let nanobot_dir = home_dir.join(".nanobot");
+            let nanobot_dir = home_dir.join("nanors");
             let db_path = nanobot_dir.join("sessions.db");
 
             info!("Database path: {}", db_path.display());

@@ -19,18 +19,11 @@
 
 use async_trait::async_trait;
 use nanors_core::{ChatMessage, Role, Session as CoreSession, SessionStorage};
-use sea_orm::{
-    ActiveModelTrait, ConnectionTrait, Database, DatabaseConnection, DbErr, EntityTrait, Schema,
-    Set,
-};
+use sea_orm::{ActiveModelTrait, Database, DatabaseConnection, EntityTrait, Schema, Set};
 use std::path::PathBuf;
 use tracing::info;
 
 use crate::entity::sessions;
-
-fn is_table_already_exists_error(err: &DbErr) -> bool {
-    err.to_string().contains("table") && err.to_string().contains("already exists")
-}
 
 pub struct SessionManager {
     db: DatabaseConnection,
@@ -43,20 +36,11 @@ impl SessionManager {
 
         let db = Database::connect(&db_url).await?;
 
-        let backend = db.get_database_backend();
-        let schema = Schema::new(backend);
-        let stmt = schema.create_table_from_entity(sessions::Entity);
-        let builder = db.get_database_backend();
-        match db
-            .execute_unprepared(&builder.build(&stmt).to_string())
-            .await
-        {
-            Ok(_) => {}
-            Err(e) if is_table_already_exists_error(&e) => {
-                info!("Table already exists, skipping creation");
-            }
-            Err(e) => return Err(e.into()),
-        }
+        Schema::new(db.get_database_backend())
+            .builder()
+            .register(sessions::Entity)
+            .sync(&db)
+            .await?;
 
         info!("SessionManager initialized");
         Ok(Self { db })
@@ -106,37 +90,38 @@ impl SessionStorage for SessionManager {
     }
 
     async fn add_message(&self, key: &str, role: Role, content: &str) -> anyhow::Result<()> {
-        let mut session = self.get_or_create(key).await?;
-        session.messages.push(ChatMessage {
-            role,
-            content: content.to_string(),
-        });
-        session.updated_at = chrono::Utc::now();
+        let now = chrono::Utc::now().naive_utc();
 
-        let messages_json = serde_json::to_string(&session.messages)?;
-
-        let now = session.updated_at.naive_utc();
-        let created_at = session.created_at.naive_utc();
-
-        let exists = sessions::Entity::find_by_id(key.to_owned())
+        if let Some(model) = sessions::Entity::find_by_id(key.to_owned())
             .one(&self.db)
             .await?
-            .is_some();
+        {
+            let mut messages: Vec<ChatMessage> = serde_json::from_str(&model.messages)?;
+            messages.push(ChatMessage {
+                role,
+                content: content.to_string(),
+            });
+            let messages_json = serde_json::to_string(&messages)?;
 
-        if exists {
             sessions::Entity::update(sessions::ActiveModel {
-                key: Set(session.key.clone()),
-                messages: Set(messages_json.clone()),
-                created_at: Set(created_at),
+                key: Set(model.key),
+                messages: Set(messages_json),
+                created_at: Set(model.created_at),
                 updated_at: Set(now),
             })
             .exec(&self.db)
             .await?;
         } else {
+            let messages = vec![ChatMessage {
+                role,
+                content: content.to_string(),
+            }];
+            let messages_json = serde_json::to_string(&messages)?;
+
             sessions::ActiveModel {
-                key: Set(session.key),
+                key: Set(key.to_string()),
                 messages: Set(messages_json),
-                created_at: Set(created_at),
+                created_at: Set(now),
                 updated_at: Set(now),
             }
             .insert(&self.db)

@@ -34,10 +34,10 @@ nanors/
 
 ## 配置和数据文件
 
-所有配置和数据文件统一放在 `~/.nanobot` 目录：
+所有配置和数据文件统一放在 `~/nanors` 目录：
 
 ```
-~/.nanobot/
+~/nanors/
 ├── config.json          # 配置文件（必需，init 时创建）
 └── sessions.db         # 数据库文件（自动创建）
 ```
@@ -87,7 +87,7 @@ nanobot init
 ### 2. 编辑配置
 
 ```bash
-# 编辑 ~/.nanobot/config.json，填入你的智谱 API Key
+# 编辑 ~/nanors/config.json，填入你的智谱 API Key
 ```
 
 配置文件格式：
@@ -265,7 +265,7 @@ export RUSTFLAGS="-Z function-sections=yes -C link-arg=-fuse-ld=/usr/bin/mold -C
 ## 文件结构
 
 ```
-~/.nanobot/
+~/nanors/
 ├── config.json          # 配置文件（必需）
 └── sessions.db         # 数据库文件（自动创建）
 ```
