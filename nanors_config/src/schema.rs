@@ -38,7 +38,10 @@ impl Config {
         let config_path = config_dir.join("config.json");
 
         if !config_path.exists() {
-            anyhow::bail!("Config file not found at: {}. Please create a config file with your Zhipu API key.", config_path.display());
+            anyhow::bail!(
+                "Config file not found at: {}. Please create a config file with your Zhipu API key.",
+                config_path.display()
+            );
         }
 
         let content = std::fs::read_to_string(&config_path)?;

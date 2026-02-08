@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use nanors_core::{ChatMessage, LLMResponse, LLMProvider};
+use nanors_core::{ChatMessage, LLMProvider, LLMResponse};
 use reqwest::Client;
 use serde_json::json;
 use tracing::info;
@@ -37,7 +37,8 @@ impl LLMProvider for ZhipuProvider {
 
         info!("Sending request to Zhipu API: model={}", model);
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/chat/completions", self.base_url))
             .bearer_auth(&self.api_key)
             .json(&request)
@@ -54,7 +55,8 @@ impl LLMProvider for ZhipuProvider {
 
         let usage = response["usage"].as_object().map(|u| nanors_core::Usage {
             prompt_tokens: u32::try_from(u["prompt_tokens"].as_u64().unwrap_or(0)).unwrap_or(0),
-            completion_tokens: u32::try_from(u["completion_tokens"].as_u64().unwrap_or(0)).unwrap_or(0),
+            completion_tokens: u32::try_from(u["completion_tokens"].as_u64().unwrap_or(0))
+                .unwrap_or(0),
             total_tokens: u32::try_from(u["total_tokens"].as_u64().unwrap_or(0)).unwrap_or(0),
         });
 

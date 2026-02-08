@@ -1,8 +1,8 @@
 use std::io::Write;
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::{Arc, atomic::AtomicBool};
 use tracing::info;
 
-use crate::{ChatMessage, LLMProvider, SessionStorage, Role};
+use crate::{ChatMessage, LLMProvider, Role, SessionStorage};
 
 pub struct AgentLoop<P = Arc<dyn LLMProvider>, S = Arc<dyn SessionStorage>>
 where
@@ -37,11 +37,7 @@ where
     P: LLMProvider + Send + Sync,
     S: SessionStorage + Send + Sync,
 {
-    pub fn new(
-        provider: P,
-        session_manager: S,
-        config: AgentConfig,
-    ) -> Self {
+    pub fn new(provider: P, session_manager: S, config: AgentConfig) -> Self {
         Self {
             provider,
             session_manager,
@@ -78,9 +74,13 @@ where
         Ok(())
     }
 
-    pub async fn process_message(&self, session_key: &str, content: &str) -> anyhow::Result<String> {
+    pub async fn process_message(
+        &self,
+        session_key: &str,
+        content: &str,
+    ) -> anyhow::Result<String> {
         info!("Processing message from session: {}", session_key);
-        
+
         let messages = vec![ChatMessage {
             role: Role::User,
             content: content.to_string(),
@@ -88,13 +88,18 @@ where
 
         let response = self.provider.chat(&messages, &self.config.model).await?;
 
-        self.session_manager.add_message(session_key, Role::User, content).await?;
-        self.session_manager.add_message(session_key, Role::Assistant, &response.content).await?;
+        self.session_manager
+            .add_message(session_key, Role::User, content)
+            .await?;
+        self.session_manager
+            .add_message(session_key, Role::Assistant, &response.content)
+            .await?;
 
         Ok(response.content)
     }
 
     pub fn stop(&self) {
-        self.running.store(false, std::sync::atomic::Ordering::Relaxed);
+        self.running
+            .store(false, std::sync::atomic::Ordering::Relaxed);
     }
 }

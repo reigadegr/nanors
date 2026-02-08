@@ -19,10 +19,10 @@
 
 use clap::{Parser, Subcommand};
 use nanors_config::Config;
+use nanors_core::{AgentConfig, AgentLoop};
 use nanors_providers::ZhipuProvider;
 use nanors_session::SessionManager;
-use nanors_core::{AgentConfig, AgentLoop};
-use tracing::{info, Level};
+use tracing::{Level, info};
 use tracing_subscriber::FmtSubscriber;
 
 #[derive(Parser)]
@@ -67,8 +67,8 @@ async fn main() -> anyhow::Result<()> {
             info!("Loaded config from ~/.nanobot/config.json");
 
             let provider = ZhipuProvider::new(config.providers.zhipu.api_key);
-            let home_dir = dirs::home_dir()
-                .ok_or_else(|| anyhow::anyhow!("Cannot find home directory"))?;
+            let home_dir =
+                dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Cannot find home directory"))?;
             let nanobot_dir = home_dir.join(".nanobot");
             let db_path = nanobot_dir.join("sessions.db");
 

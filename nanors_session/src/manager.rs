@@ -20,8 +20,8 @@
 use async_trait::async_trait;
 use nanors_core::{ChatMessage, Role, Session as CoreSession, SessionStorage};
 use sea_orm::{ActiveModelTrait, Database, DatabaseConnection, DbErr, EntityTrait, Set};
-use tracing::info;
 use std::path::PathBuf;
+use tracing::info;
 
 use crate::entity::sessions;
 
@@ -50,9 +50,7 @@ impl SessionManager {
     }
 
     pub async fn list_sessions(&self) -> anyhow::Result<Vec<String>> {
-        let session_models = sessions::Entity::find()
-            .all(&self.db)
-            .await?;
+        let session_models = sessions::Entity::find().all(&self.db).await?;
 
         Ok(session_models.into_iter().map(|s| s.key).collect())
     }

@@ -23,22 +23,27 @@ impl ToolRegistry {
     }
 
     pub async fn execute(&self, name: &str, args: serde_json::Value) -> anyhow::Result<String> {
-        let tool = self.tools.get(name)
+        let tool = self
+            .tools
+            .get(name)
             .ok_or_else(|| anyhow::anyhow!("Tool not found: {name}"))?;
         tool.execute(args).await
     }
 
     #[must_use]
     pub fn get_definitions(&self) -> Vec<serde_json::Value> {
-        self.tools.values()
-            .map(|t| json!({
-                "type": "function",
-                "function": {
-                    "name": t.name(),
-                    "description": t.description(),
-                    "parameters": t.parameters()
-                }
-            }))
+        self.tools
+            .values()
+            .map(|t| {
+                json!({
+                    "type": "function",
+                    "function": {
+                        "name": t.name(),
+                        "description": t.description(),
+                        "parameters": t.parameters()
+                    }
+                })
+            })
             .collect()
     }
 
