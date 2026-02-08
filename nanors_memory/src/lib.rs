@@ -17,7 +17,6 @@
     clippy::missing_errors_doc
 )]
 
-mod compression;
 mod convert;
 mod dedup;
 mod manager;

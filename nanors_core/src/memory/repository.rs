@@ -3,6 +3,12 @@ use uuid::Uuid;
 
 use super::types::{CategoryItem, MemoryCategory, MemoryItem, Resource, SalienceScore};
 
+/// Type alias for category salience scores
+pub type CategorySalienceScore = SalienceScore<MemoryCategory>;
+
+/// Type alias for resource salience scores
+pub type ResourceSalienceScore = SalienceScore<Resource>;
+
 #[async_trait]
 pub trait MemoryItemRepo: Send + Sync {
     async fn insert(&self, item: &MemoryItem) -> anyhow::Result<()>;
@@ -26,7 +32,7 @@ pub trait MemoryItemRepo: Send + Sync {
         user_scope: &str,
         query_embedding: &[f32],
         top_k: usize,
-    ) -> anyhow::Result<Vec<SalienceScore>>;
+    ) -> anyhow::Result<Vec<SalienceScore<MemoryItem>>>;
 
     /// Backfill embeddings for items that don't have them.
     /// Returns the number of items updated.
@@ -35,18 +41,6 @@ pub trait MemoryItemRepo: Send + Sync {
         user_scope: &str,
         embed_fn: &(dyn Fn(String) -> anyhow::Result<Vec<f32>> + Send + Sync),
     ) -> anyhow::Result<usize>;
-}
-
-#[derive(Debug, Clone)]
-pub struct CategorySalienceScore {
-    pub category: MemoryCategory,
-    pub score: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct ResourceSalienceScore {
-    pub resource: Resource,
-    pub score: f64,
 }
 
 #[async_trait]

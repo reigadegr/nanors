@@ -155,13 +155,13 @@ impl MemoryItemRepo for MemoryManager {
         user_scope: &str,
         query_embedding: &[f32],
         top_k: usize,
-    ) -> anyhow::Result<Vec<SalienceScore>> {
+    ) -> anyhow::Result<Vec<SalienceScore<MemoryItem>>> {
         let items: Vec<MemoryItem> = MemoryItemRepo::list_by_scope(self, user_scope).await?;
         let now = Utc::now();
 
         // Filter out items that are essentially the same as the query (similarity >= 0.95)
         // to avoid returning the exact same question back to the user
-        let mut filtered_scores: Vec<SalienceScore> = items
+        let mut filtered_scores: Vec<SalienceScore<MemoryItem>> = items
             .into_iter()
             .map(|item| {
                 let salience = if let Some(embedding) = &item.embedding {
@@ -329,7 +329,10 @@ impl MemoryCategoryRepo for MemoryManager {
                 let score = category.embedding.as_ref().map_or(0.0, |embedding| {
                     scoring::cosine_similarity(query_embedding, embedding)
                 });
-                CategorySalienceScore { category, score }
+                CategorySalienceScore {
+                    item: category,
+                    score,
+                }
             })
             .collect();
 
@@ -452,7 +455,10 @@ impl ResourceRepo for MemoryManager {
                 let score = resource.embedding.as_ref().map_or(0.0, |embedding| {
                     scoring::cosine_similarity(query_embedding, embedding)
                 });
-                ResourceSalienceScore { resource, score }
+                ResourceSalienceScore {
+                    item: resource,
+                    score,
+                }
             })
             .collect();
 

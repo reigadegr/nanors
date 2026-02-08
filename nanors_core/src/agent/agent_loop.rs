@@ -266,10 +266,10 @@ where
 
         info!("Tier 1: Retrieved {} categories", categories.len());
         for cat_score in categories {
-            let text = if let Some(summary) = &cat_score.category.summary {
-                format!("Category: {} - {}", cat_score.category.name, summary)
+            let text = if let Some(summary) = &cat_score.item.summary {
+                format!("Category: {} - {}", cat_score.item.name, summary)
             } else {
-                format!("Category: {}", cat_score.category.name)
+                format!("Category: {}", cat_score.item.name)
             };
             *total_length = Self::add_context_part(
                 context_parts,
@@ -342,7 +342,7 @@ where
         info!("Tier 3: Retrieved {} resources", resources.len());
         for res_score in resources {
             let caption = res_score
-                .resource
+                .item
                 .caption
                 .as_deref()
                 .unwrap_or("Untitled resource");

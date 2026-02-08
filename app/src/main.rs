@@ -19,7 +19,6 @@
 
 use clap::{Parser, Subcommand};
 use nanors_config::Config;
-use nanors_core::agent::RetrievalConfig;
 use nanors_core::{AgentConfig, AgentLoop};
 use nanors_memory::MemoryManager;
 use nanors_providers::ZhipuProvider;
@@ -37,17 +36,7 @@ async fn setup_memory_agent(
     let memory_manager = Arc::new(MemoryManager::new(&config.database.url).await?);
     let user_scope = config.memory.default_user_scope.clone();
 
-    let retrieval_config = RetrievalConfig {
-        categories_enabled: config.memory.retrieval.categories_enabled,
-        categories_top_k: config.memory.retrieval.categories_top_k,
-        items_top_k: config.memory.retrieval.items_top_k,
-        resources_enabled: config.memory.retrieval.resources_enabled,
-        resources_top_k: config.memory.retrieval.resources_top_k,
-        context_target_length: config.memory.retrieval.context_target_length,
-        sufficiency_check_enabled: config.memory.retrieval.sufficiency_check_enabled,
-        enable_category_compression: config.memory.retrieval.enable_category_compression,
-        category_summary_target_length: config.memory.retrieval.category_summary_target_length,
-    };
+    let retrieval_config = config.memory.retrieval.clone();
 
     info!(
         "Tiered retrieval config: categories_top_k={}, items_top_k={}, resources_top_k={}, context_target_length={}",
@@ -63,29 +52,19 @@ async fn setup_memory_agent(
 }
 
 fn mask_database_url(url: &str) -> String {
-    url.find("://").map_or_else(
-        || url.to_string(),
-        |start| {
-            let scheme = &url[..start + 3];
-            let rest = &url[start + 3..];
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return url.to_string();
+    };
 
-            rest.find('@').map_or_else(
-                || url.to_string(),
-                |at_pos| {
-                    let credentials = &rest[..at_pos];
-                    let after_at = &rest[at_pos..];
+    let Some((credentials, after_at)) = rest.split_once('@') else {
+        return url.to_string();
+    };
 
-                    credentials.find(':').map_or_else(
-                        || url.to_string(),
-                        |colon_pos| {
-                            let username = &credentials[..colon_pos];
-                            format!("{scheme}{username}:***{after_at}")
-                        },
-                    )
-                },
-            )
-        },
-    )
+    let Some((username, _password)) = credentials.split_once(':') else {
+        return url.to_string();
+    };
+
+    format!("{scheme}://{username}:***{after_at}")
 }
 
 #[derive(Parser)]

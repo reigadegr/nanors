@@ -81,7 +81,7 @@ pub struct Resource {
 }
 
 #[derive(Debug, Clone)]
-pub struct SalienceScore {
-    pub item: MemoryItem,
+pub struct SalienceScore<T> {
+    pub item: T,
     pub score: f64,
 }
