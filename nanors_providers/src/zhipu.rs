@@ -12,6 +12,13 @@ pub struct ZhipuProvider {
 }
 
 impl ZhipuProvider {
+    /// Convert f64 to f32 for embedding values
+    /// Precision loss is acceptable for ML embeddings
+    #[expect(clippy::cast_possible_truncation, reason = "ML embeddings use f32")]
+    const fn f64_to_f32(x: f64) -> f32 {
+        x as f32
+    }
+
     pub fn new(api_key: String) -> Self {
         info!("Creating ZhipuProvider");
         Self {
@@ -143,7 +150,7 @@ impl LLMProvider for ZhipuProvider {
             .iter()
             .map(|v| {
                 v.as_f64()
-                    .map(|x| x as f32)
+                    .map(Self::f64_to_f32)
                     .ok_or_else(|| anyhow::anyhow!("Invalid embedding value"))
             })
             .collect::<Result<Vec<f32>, _>>()?;
