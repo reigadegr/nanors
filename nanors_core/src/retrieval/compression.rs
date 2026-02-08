@@ -26,24 +26,29 @@ use uuid::Uuid;
 use crate::{ChatMessage, LLMProvider, Role};
 
 /// Reference pattern for extracting item references from text
-/// Format: [ref:ITEM_ID] or [ref:ID1,ID2,ID3]
+/// Format: [`ref:ITEM_ID`] or [ref:ID1,ID2,ID3]
 static REF_PATTERN: OnceLock<regex::Regex> = OnceLock::new();
 
 /// Get the reference pattern regex
+#[expect(
+    clippy::expect_used,
+    reason = "Static regex pattern validated at compile time"
+)]
 fn ref_pattern() -> &'static regex::Regex {
     REF_PATTERN.get_or_init(|| {
         regex::Regex::new(r"\[ref:([a-zA-Z0-9_,\-]+)\]")
-            .expect("Failed to compile reference pattern regex")
+            .expect("Static regex pattern is guaranteed to be valid")
     })
 }
 
-/// Extract item references from text in the format [ref:ITEM_ID]
+/// Extract item references from text in the format [`ref:ITEM_ID`]
 ///
 /// # Arguments
 /// * `text` - Text containing references
 ///
 /// # Returns
 /// * Vector of unique item IDs in the order they appear
+#[must_use]
 pub fn extract_references(text: &str) -> Vec<String> {
     let mut ids = Vec::new();
     let mut seen = HashSet::new();
@@ -69,6 +74,7 @@ pub fn extract_references(text: &str) -> Vec<String> {
 ///
 /// # Returns
 /// * Short ID string (6 characters)
+#[must_use]
 pub fn build_short_id(uuid: &Uuid) -> String {
     let uuid_str = uuid.to_string().replace('-', "");
     uuid_str[..uuid_str.len().min(6)].to_string()
@@ -79,11 +85,12 @@ pub fn build_short_id(uuid: &Uuid) -> String {
 /// # Arguments
 /// * `category_name` - Name of the category
 /// * `current_summary` - Current summary text
-/// * `new_items` - New items to merge (item_id, summary) pairs
+/// * `new_items` - New items to merge (`item_id`, summary) pairs
 /// * `target_length` - Target length in tokens
 ///
 /// # Returns
 /// * Prompt string for the LLM
+#[must_use]
 pub fn build_category_summary_prompt(
     category_name: &str,
     current_summary: &str,
@@ -146,7 +153,7 @@ pub trait CategoryCompressor: Send + Sync {
     /// # Arguments
     /// * `category_name` - Name of the category
     /// * `current_summary` - Current summary text
-    /// * `new_items` - New items to merge (item_id, summary) pairs
+    /// * `new_items` - New items to merge (`item_id`, summary) pairs
     /// * `target_length` - Target length in tokens
     ///
     /// # Returns
@@ -212,7 +219,7 @@ where
     }
 
     /// Parse the response to extract the summary and references
-    fn parse_response(&self, response: &str) -> CompressionResult {
+    fn parse_response(response: &str) -> CompressionResult {
         let referenced_item_ids = extract_references(response);
         debug!(
             "Extracted {} references from compression response",
@@ -260,7 +267,7 @@ where
             response.content.len()
         );
 
-        Ok(self.parse_response(&response.content))
+        Ok(Self::parse_response(&response.content))
     }
 }
 

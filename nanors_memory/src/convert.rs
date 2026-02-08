@@ -12,16 +12,12 @@ fn json_to_embedding(val: &JsonValue) -> Option<Vec<f32>> {
     )
 }
 
-fn embedding_to_json(emb: &[f32]) -> JsonValue {
+pub fn embedding_to_json(emb: &[f32]) -> JsonValue {
     JsonValue::Array(emb.iter().map(|f| JsonValue::from(f64::from(*f))).collect())
 }
 
 pub fn memory_item_from_model(m: memory_items::Model) -> MemoryItem {
-    let embedding = m
-        .embedding
-        .as_ref()
-        .map(|json| json_to_embedding(json))
-        .flatten();
+    let embedding = m.embedding.as_ref().and_then(json_to_embedding);
     let memory_type = m
         .memory_type
         .parse::<MemoryType>()
@@ -44,11 +40,7 @@ pub fn memory_item_from_model(m: memory_items::Model) -> MemoryItem {
 }
 
 pub fn memory_category_from_model(m: memory_categories::Model) -> MemoryCategory {
-    let embedding = m
-        .embedding
-        .as_ref()
-        .map(|json| json_to_embedding(json))
-        .flatten();
+    let embedding = m.embedding.as_ref().and_then(json_to_embedding);
 
     MemoryCategory {
         id: m.id,
@@ -70,11 +62,7 @@ pub const fn category_item_from_model(m: &category_items::Model) -> CategoryItem
 }
 
 pub fn resource_from_model(m: resources::Model) -> Resource {
-    let embedding = m
-        .embedding
-        .as_ref()
-        .map(|json| json_to_embedding(json))
-        .flatten();
+    let embedding = m.embedding.as_ref().and_then(json_to_embedding);
 
     Resource {
         id: m.id,
@@ -87,8 +75,4 @@ pub fn resource_from_model(m: resources::Model) -> Resource {
         created_at: m.created_at.into(),
         updated_at: m.updated_at.into(),
     }
-}
-
-pub fn embedding_option_to_json(emb: Option<&Vec<f32>>) -> Option<JsonValue> {
-    emb.map(|v| embedding_to_json(v.as_slice()))
 }

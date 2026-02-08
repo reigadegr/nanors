@@ -118,12 +118,12 @@ pub struct MessageCountSegmenter {
 impl MessageCountSegmenter {
     /// Create a new message count segmenter
     #[must_use]
-    pub fn new(config: SegmentationConfig) -> Self {
+    pub const fn new(config: SegmentationConfig) -> Self {
         Self { config }
     }
 
     /// Generate a caption for a segment
-    fn generate_caption(&self, messages: &[ChatMessage]) -> String {
+    fn generate_caption(messages: &[ChatMessage]) -> String {
         if messages.is_empty() {
             return "Empty segment".to_string();
         }
@@ -138,11 +138,10 @@ impl MessageCountSegmenter {
                     .map(|line| line.chars().take(50).collect::<String>())
             });
 
-        if let Some(msg) = first_user_msg {
-            format!("Conversation about: {msg}...")
-        } else {
-            format!("Segment with {} messages", messages.len())
-        }
+        first_user_msg.map_or_else(
+            || format!("Segment with {} messages", messages.len()),
+            |msg| format!("Conversation about: {msg}..."),
+        )
     }
 }
 
@@ -171,7 +170,7 @@ impl ConversationSegmenter for MessageCountSegmenter {
             }
 
             let segment_messages = &messages[start_index..end_index];
-            let caption = self.generate_caption(segment_messages);
+            let caption = Self::generate_caption(segment_messages);
 
             let segment = ConversationSegment::new(*session_id, start_index, end_index, caption);
 
@@ -185,7 +184,6 @@ impl ConversationSegmenter for MessageCountSegmenter {
         Ok(segments)
     }
 
-    #[must_use]
     fn config(&self) -> &SegmentationConfig {
         &self.config
     }
@@ -203,40 +201,43 @@ mod tests {
                 } else {
                     Role::Assistant
                 },
-                content: format!("Message {}", i),
+                content: format!("Message {i}"),
             })
             .collect()
     }
 
     #[tokio::test]
+    #[expect(clippy::expect_used, reason = "Test failure should panic with context")]
     async fn test_segment_empty_conversation() {
         let segmenter = MessageCountSegmenter::new(SegmentationConfig::default());
         let session_id = Uuid::now_v7();
         let messages = vec![];
 
         let segments = segmenter
-            .segment(&session_id, &messages, &segmenter.config())
+            .segment(&session_id, &messages, segmenter.config())
             .await
-            .unwrap();
+            .expect("Failed to segment empty conversation");
 
         assert!(segments.is_empty());
     }
 
     #[tokio::test]
+    #[expect(clippy::expect_used, reason = "Test failure should panic with context")]
     async fn test_segment_small_conversation() {
         let segmenter = MessageCountSegmenter::new(SegmentationConfig::default());
         let session_id = Uuid::now_v7();
         let messages = create_test_messages(2); // Less than min_segment_size
 
         let segments = segmenter
-            .segment(&session_id, &messages, &segmenter.config())
+            .segment(&session_id, &messages, segmenter.config())
             .await
-            .unwrap();
+            .expect("Failed to segment small conversation");
 
         assert!(segments.is_empty());
     }
 
     #[tokio::test]
+    #[expect(clippy::expect_used, reason = "Test failure should panic with context")]
     async fn test_segment_medium_conversation() {
         let config = SegmentationConfig {
             segment_size: 5,
@@ -248,9 +249,9 @@ mod tests {
         let messages = create_test_messages(12);
 
         let segments = segmenter
-            .segment(&session_id, &messages, &segmenter.config())
+            .segment(&session_id, &messages, segmenter.config())
             .await
-            .unwrap();
+            .expect("Failed to segment medium conversation");
 
         assert_eq!(segments.len(), 2);
         assert_eq!(segments[0].start_index, 0);

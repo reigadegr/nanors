@@ -12,6 +12,10 @@ use crate::{
 };
 
 /// Tiered retrieval configuration based on memU's approach
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "These are independent feature flags, not a state machine"
+)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetrievalConfig {
     pub categories_enabled: bool,
@@ -413,7 +417,6 @@ where
                 let retrieved = context_parts.join("\n");
                 match checker.check(&active_query, &retrieved).await {
                     Ok(check) => {
-                        active_query = check.rewritten_query;
                         if !check.needs_more {
                             info!("Sufficient content after items, skipping resources");
                             return self.build_final_prompt(&context_parts);
@@ -440,7 +443,10 @@ where
         }
 
         let memory_context = context_parts.join("\n");
-        let total_length = context_parts.iter().map(|p| p.len()).sum::<usize>();
+        let total_length = context_parts
+            .iter()
+            .map(std::string::String::len)
+            .sum::<usize>();
 
         info!(
             "Built context with {} chars (target: {})",
@@ -531,32 +537,13 @@ where
 
             // Trigger category compression if enabled
             if self.retrieval_config.enable_category_compression {
-                if let (Some(compressor), Some(category_manager)) =
-                    (&self.category_compressor, &self.category_manager)
-                {
-                    let new_item_ids = vec![user_memory.id, assistant_memory.id];
-                    if let Err(e) = self
-                        .compress_categories_due_to_new_memories(
-                            category_manager,
-                            compressor,
-                            &new_item_ids,
-                        )
-                        .await
-                    {
-                        debug!("Failed to compress categories: {e}");
-                    }
-                }
+                self.compress_categories_due_to_new_memories(2);
             }
         }
     }
 
     /// Compress categories that have new memories
-    async fn compress_categories_due_to_new_memories(
-        &self,
-        _category_manager: &Arc<dyn MemoryCategoryRepo>,
-        _compressor: &Arc<dyn CategoryCompressor>,
-        _item_ids: &[Uuid],
-    ) -> anyhow::Result<()> {
+    fn compress_categories_due_to_new_memories(&self, item_count: usize) {
         // This is a placeholder for the category compression logic
         // The actual implementation would:
         // 1. Find categories linked to the new items
@@ -567,12 +554,10 @@ where
         if self.retrieval_config.enable_category_compression {
             debug!(
                 "Category compression enabled, would compress categories for {} new items",
-                _item_ids.len()
+                item_count
             );
             // TODO: Implement actual compression logic once category-item linking is in place
         }
-
-        Ok(())
     }
 
     pub fn stop(&self) {

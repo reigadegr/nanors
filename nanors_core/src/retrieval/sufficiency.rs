@@ -35,11 +35,12 @@ Return RETRIEVE if more information is needed, otherwise return NO_RETRIEVE.
 ";
 
 /// Default user prompt template for sufficiency checking
+/// Uses $ prefixed placeholders to avoid confusion with format strings
 pub const DEFAULT_SUFFICIENCY_USER_PROMPT: &str = r"
-User Query: {query}
+User Query: $query
 
 Retrieved Content:
-{retrieved_content}
+$retrieved_content
 ";
 
 /// Result of sufficiency check
@@ -57,7 +58,7 @@ pub struct SufficiencyResult {
 /// * `response` - The LLM response text
 ///
 /// # Returns
-/// * Tuple of (needs_more, rewritten_query)
+/// * Tuple of (`needs_more`, `rewritten_query`)
 fn parse_sufficiency_response(response: &str) -> (bool, String) {
     let response_lower = response.to_lowercase();
 
@@ -146,7 +147,7 @@ where
 
     /// Set a custom user prompt template
     ///
-    /// The template should contain {query} and {retrieved_content} placeholders
+    /// The template should contain {query} and {`retrieved_content`} placeholders
     #[must_use]
     pub fn with_user_prompt_template(mut self, template: String) -> Self {
         self.user_prompt_template = template;
@@ -154,7 +155,7 @@ where
     }
 
     /// Parse the LLM response to extract the decision
-    fn parse_response(&self, response: &str) -> (bool, String) {
+    fn parse_response(response: &str) -> (bool, String) {
         parse_sufficiency_response(response)
     }
 }
@@ -180,8 +181,8 @@ where
 
         let user_prompt = self
             .user_prompt_template
-            .replace("{query}", query)
-            .replace("{retrieved_content}", retrieved_content);
+            .replace("$query", query)
+            .replace("$retrieved_content", retrieved_content);
 
         let messages = vec![
             ChatMessage {
@@ -198,7 +199,7 @@ where
 
         debug!("Sufficiency check response: {}", response.content);
 
-        let (needs_more, rewritten_query) = self.parse_response(&response.content);
+        let (needs_more, rewritten_query) = Self::parse_response(&response.content);
 
         debug!("Sufficiency check result: needs_more={}", needs_more);
 

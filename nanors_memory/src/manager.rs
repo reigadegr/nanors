@@ -62,7 +62,10 @@ impl MemoryManager {
 #[async_trait]
 impl MemoryItemRepo for MemoryManager {
     async fn insert(&self, item: &MemoryItem) -> anyhow::Result<()> {
-        let embedding_json = convert::embedding_option_to_json(item.embedding.as_ref());
+        let embedding_json = item
+            .embedding
+            .as_ref()
+            .map(|v| convert::embedding_to_json(v.as_slice()));
         let model = memory_items::ActiveModel {
             id: Set(item.id),
             user_scope: Set(item.user_scope.clone()),
@@ -111,7 +114,10 @@ impl MemoryItemRepo for MemoryManager {
             resource_id: Set(item.resource_id),
             memory_type: Set(item.memory_type.to_string()),
             summary: Set(item.summary.clone()),
-            embedding: Set(convert::embedding_option_to_json(item.embedding.as_ref())),
+            embedding: Set(item
+                .embedding
+                .as_ref()
+                .map(|v| convert::embedding_to_json(v.as_slice()))),
             happened_at: Set(item.happened_at.into()),
             extra: Set(item.extra.clone()),
             content_hash: Set(item.content_hash.clone()),
@@ -153,7 +159,9 @@ impl MemoryItemRepo for MemoryManager {
         let items: Vec<MemoryItem> = MemoryItemRepo::list_by_scope(self, user_scope).await?;
         let now = Utc::now();
 
-        let mut scores: Vec<SalienceScore> = items
+        // Filter out items that are essentially the same as the query (similarity >= 0.95)
+        // to avoid returning the exact same question back to the user
+        let mut filtered_scores: Vec<SalienceScore> = items
             .into_iter()
             .map(|item| {
                 let salience = if let Some(embedding) = &item.embedding {
@@ -174,12 +182,6 @@ impl MemoryItemRepo for MemoryManager {
                     score: salience,
                 }
             })
-            .collect();
-
-        // Filter out items that are essentially the same as the query (similarity >= 0.95)
-        // to avoid returning the exact same question back to the user
-        let mut filtered_scores: Vec<SalienceScore> = scores
-            .into_iter()
             .filter(|score| {
                 let sim = score
                     .item
@@ -235,7 +237,10 @@ impl MemoryCategoryRepo for MemoryManager {
             user_scope: Set(cat.user_scope.clone()),
             name: Set(cat.name.clone()),
             description: Set(cat.description.clone()),
-            embedding: Set(convert::embedding_option_to_json(cat.embedding.as_ref())),
+            embedding: Set(cat
+                .embedding
+                .as_ref()
+                .map(|v| convert::embedding_to_json(v.as_slice()))),
             summary: Set(cat.summary.clone()),
             created_at: Set(cat.created_at.into()),
             updated_at: Set(cat.updated_at.into()),
@@ -275,7 +280,10 @@ impl MemoryCategoryRepo for MemoryManager {
             user_scope: Set(cat.user_scope.clone()),
             name: Set(cat.name.clone()),
             description: Set(cat.description.clone()),
-            embedding: Set(convert::embedding_option_to_json(cat.embedding.as_ref())),
+            embedding: Set(cat
+                .embedding
+                .as_ref()
+                .map(|v| convert::embedding_to_json(v.as_slice()))),
             summary: Set(cat.summary.clone()),
             created_at: Set(existing.created_at),
             updated_at: Set(cat.updated_at.into()),
@@ -392,7 +400,10 @@ impl ResourceRepo for MemoryManager {
             modality: Set(res.modality.clone()),
             local_path: Set(res.local_path.clone()),
             caption: Set(res.caption.clone()),
-            embedding: Set(convert::embedding_option_to_json(res.embedding.as_ref())),
+            embedding: Set(res
+                .embedding
+                .as_ref()
+                .map(|v| convert::embedding_to_json(v.as_slice()))),
             created_at: Set(res.created_at.into()),
             updated_at: Set(res.updated_at.into()),
         };

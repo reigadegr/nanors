@@ -19,8 +19,8 @@
 
 use async_trait::async_trait;
 use nanors_core::{
-    ChatMessage, ConversationSegment, ConversationSegmenter, Role, SegmentationConfig,
-    Session as CoreSession, SessionStorage,
+    ChatMessage, ConversationSegment, ConversationSegmenter, Role, Session as CoreSession,
+    SessionStorage,
 };
 use nanors_entities::sessions;
 use sea_orm::{ActiveModelTrait, Database, DatabaseConnection, EntityTrait, Set};
