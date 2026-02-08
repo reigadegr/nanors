@@ -18,14 +18,18 @@
 )]
 
 use async_trait::async_trait;
-use nanors_core::{ChatMessage, Role, Session as CoreSession, SessionStorage};
+use nanors_core::{
+    ChatMessage, ConversationSegment, ConversationSegmenter, Role, SegmentationConfig,
+    Session as CoreSession, SessionStorage,
+};
 use nanors_entities::sessions;
 use sea_orm::{ActiveModelTrait, Database, DatabaseConnection, EntityTrait, Set};
-use tracing::info;
+use tracing::{debug, info};
 use uuid::Uuid;
 
 pub struct SessionManager {
     db: DatabaseConnection,
+    segmenter: Option<Box<dyn ConversationSegmenter>>,
 }
 
 impl SessionManager {
@@ -35,7 +39,17 @@ impl SessionManager {
         let db = Database::connect(database_url).await?;
 
         info!("SessionManager initialized");
-        Ok(Self { db })
+        Ok(Self {
+            db,
+            segmenter: None,
+        })
+    }
+
+    /// Set a conversation segmenter for automatic conversation segmentation
+    #[must_use]
+    pub fn with_segmenter(mut self, segmenter: Box<dyn ConversationSegmenter>) -> Self {
+        self.segmenter = Some(segmenter);
+        self
     }
 
     pub async fn clear_session(&self, id: &Uuid) -> anyhow::Result<()> {
@@ -49,6 +63,38 @@ impl SessionManager {
         let session_models = sessions::Entity::find().all(&self.db).await?;
 
         Ok(session_models.into_iter().map(|s| s.id).collect())
+    }
+
+    /// Segment a conversation into smaller parts for processing
+    ///
+    /// # Arguments
+    /// * `session_id` - ID of the session to segment
+    ///
+    /// # Returns
+    /// * Vector of conversation segments
+    pub async fn segment_conversation(
+        &self,
+        session_id: &Uuid,
+    ) -> anyhow::Result<Vec<ConversationSegment>> {
+        let session = self.get_or_create(session_id).await?;
+
+        if let Some(segmenter) = &self.segmenter {
+            let config = segmenter.config();
+            let segments = segmenter
+                .segment(session_id, &session.messages, config)
+                .await?;
+
+            info!(
+                "Created {} segments for session {}",
+                segments.len(),
+                session_id
+            );
+
+            Ok(segments)
+        } else {
+            debug!("No segmenter configured, returning empty segments");
+            Ok(vec![])
+        }
     }
 }
 

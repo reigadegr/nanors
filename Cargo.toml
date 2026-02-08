@@ -57,6 +57,7 @@ clap = { version = "4.5", features = ["derive"] }
 dirs = "5.0"
 uuid = { version = "1.20.0", features = ["v7", "serde", "fast-rng"] }
 sha2 = "0.10"
+regex = "1.11"
 
 [profile.dev]
 debug = true

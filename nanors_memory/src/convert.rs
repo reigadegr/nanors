@@ -1,25 +1,27 @@
 use nanors_core::memory::{CategoryItem, MemoryCategory, MemoryItem, MemoryType, Resource};
 use nanors_entities::{category_items, memory_categories, memory_items, resources};
+use sea_orm::JsonValue;
 
 #[allow(clippy::cast_possible_truncation)]
-fn json_to_embedding(val: &serde_json::Value) -> Option<Vec<f32>> {
-    val.as_array().map(|arr| {
+fn json_to_embedding(val: &JsonValue) -> Option<Vec<f32>> {
+    let arr = val.as_array()?;
+    Some(
         arr.iter()
             .filter_map(|v| v.as_f64().map(|f| f as f32))
-            .collect()
-    })
-}
-
-fn embedding_to_json(emb: &[f32]) -> serde_json::Value {
-    serde_json::Value::Array(
-        emb.iter()
-            .map(|f| serde_json::Value::from(f64::from(*f)))
             .collect(),
     )
 }
 
+fn embedding_to_json(emb: &[f32]) -> JsonValue {
+    JsonValue::Array(emb.iter().map(|f| JsonValue::from(f64::from(*f))).collect())
+}
+
 pub fn memory_item_from_model(m: memory_items::Model) -> MemoryItem {
-    let embedding = m.embedding.as_ref().and_then(json_to_embedding);
+    let embedding = m
+        .embedding
+        .as_ref()
+        .map(|json| json_to_embedding(json))
+        .flatten();
     let memory_type = m
         .memory_type
         .parse::<MemoryType>()
@@ -42,7 +44,11 @@ pub fn memory_item_from_model(m: memory_items::Model) -> MemoryItem {
 }
 
 pub fn memory_category_from_model(m: memory_categories::Model) -> MemoryCategory {
-    let embedding = m.embedding.as_ref().and_then(json_to_embedding);
+    let embedding = m
+        .embedding
+        .as_ref()
+        .map(|json| json_to_embedding(json))
+        .flatten();
 
     MemoryCategory {
         id: m.id,
@@ -64,7 +70,11 @@ pub const fn category_item_from_model(m: &category_items::Model) -> CategoryItem
 }
 
 pub fn resource_from_model(m: resources::Model) -> Resource {
-    let embedding = m.embedding.as_ref().and_then(json_to_embedding);
+    let embedding = m
+        .embedding
+        .as_ref()
+        .map(|json| json_to_embedding(json))
+        .flatten();
 
     Resource {
         id: m.id,
@@ -79,7 +89,6 @@ pub fn resource_from_model(m: resources::Model) -> Resource {
     }
 }
 
-#[allow(clippy::single_option_map)]
-pub fn embedding_option_to_json(emb: Option<&Vec<f32>>) -> Option<serde_json::Value> {
+pub fn embedding_option_to_json(emb: Option<&Vec<f32>>) -> Option<JsonValue> {
     emb.map(|v| embedding_to_json(v.as_slice()))
 }

@@ -18,3 +18,4 @@ tracing.workspace = true
 async-trait.workspace = true
 uuid.workspace = true
 sha2.workspace = true
+regex.workspace = true

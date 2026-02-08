@@ -17,12 +17,11 @@
     clippy::missing_errors_doc
 )]
 
-mod compression;
-mod convert;
-mod dedup;
-mod manager;
-mod scoring;
+pub mod compression;
+pub mod sufficiency;
 
-pub use dedup::content_hash;
-pub use manager::MemoryManager;
-pub use scoring::{compute_salience, cosine_similarity};
+pub use compression::{
+    CategoryCompressor, LLMAbstractor, build_category_summary_prompt, build_short_id,
+    extract_references,
+};
+pub use sufficiency::{SufficiencyChecker, SufficiencyResult};

@@ -8,6 +8,7 @@ use uuid::Uuid;
 use crate::{
     ChatMessage, LLMProvider, MemoryCategoryRepo, MemoryItem, MemoryItemRepo, MemoryType,
     ResourceRepo, Role, SessionStorage,
+    retrieval::{CategoryCompressor, SufficiencyChecker},
 };
 
 /// Tiered retrieval configuration based on memU's approach
@@ -19,6 +20,15 @@ pub struct RetrievalConfig {
     pub resources_enabled: bool,
     pub resources_top_k: usize,
     pub context_target_length: usize,
+    /// Enable sufficiency check to stop retrieval early
+    #[serde(default)]
+    pub sufficiency_check_enabled: bool,
+    /// Enable category auto-compression
+    #[serde(default)]
+    pub enable_category_compression: bool,
+    /// Target length for category summaries in tokens
+    #[serde(default = "RetrievalConfig::default_category_summary_target_length")]
+    pub category_summary_target_length: usize,
 }
 
 impl Default for RetrievalConfig {
@@ -30,7 +40,16 @@ impl Default for RetrievalConfig {
             resources_enabled: true,
             resources_top_k: 2,
             context_target_length: 2000,
+            sufficiency_check_enabled: false,
+            enable_category_compression: false,
+            category_summary_target_length: Self::default_category_summary_target_length(),
         }
+    }
+}
+
+impl RetrievalConfig {
+    const fn default_category_summary_target_length() -> usize {
+        400
     }
 }
 
@@ -48,6 +67,8 @@ where
     resource_manager: Option<Arc<dyn ResourceRepo>>,
     user_scope: String,
     retrieval_config: RetrievalConfig,
+    sufficiency_checker: Option<Arc<dyn SufficiencyChecker>>,
+    category_compressor: Option<Arc<dyn CategoryCompressor>>,
 }
 
 #[derive(Debug, Clone)]
@@ -83,6 +104,8 @@ where
             resource_manager: None,
             user_scope: String::new(),
             retrieval_config: RetrievalConfig::default(),
+            sufficiency_checker: None,
+            category_compressor: None,
         }
     }
 
@@ -109,6 +132,20 @@ where
         self.category_manager = Some(category_manager);
         self.resource_manager = Some(resource_manager);
         self.retrieval_config = retrieval_config;
+        self
+    }
+
+    /// Set the sufficiency checker for early termination
+    #[must_use]
+    pub fn with_sufficiency_checker(mut self, checker: Arc<dyn SufficiencyChecker>) -> Self {
+        self.sufficiency_checker = Some(checker);
+        self
+    }
+
+    /// Set the category compressor for auto-compression
+    #[must_use]
+    pub fn with_category_compressor(mut self, compressor: Arc<dyn CategoryCompressor>) -> Self {
+        self.category_compressor = Some(compressor);
         self
     }
 
@@ -171,9 +208,6 @@ where
                 msg.role,
                 msg.content.len()
             );
-            if msg.role == Role::System {
-                debug!("System prompt: {}", msg.content);
-            }
         }
 
         let response = self.provider.chat(&messages, &self.config.model).await?;
@@ -265,7 +299,7 @@ where
         };
 
         info!("Tier 2: Retrieved {} items", items.len());
-        for item_score in items {
+        for item_score in &items {
             let text = format!("- {}", item_score.item.summary);
             *total_length = Self::add_context_part(
                 context_parts,
@@ -325,10 +359,11 @@ where
         }
 
         info!(
-            "Using tiered retrieval with config: categories_top_k={}, items_top_k={}, context_target_length={}",
+            "Using tiered retrieval with config: categories_top_k={}, items_top_k={}, context_target_length={}, sufficiency_check={}",
             self.retrieval_config.categories_top_k,
             self.retrieval_config.items_top_k,
-            self.retrieval_config.context_target_length
+            self.retrieval_config.context_target_length,
+            self.retrieval_config.sufficiency_check_enabled
         );
 
         let query_embedding = match self.provider.embed(query).await {
@@ -341,19 +376,72 @@ where
 
         let mut context_parts = Vec::new();
         let mut total_length = 0_usize;
+        let mut active_query = query.to_string();
 
+        // Tier 1: Categories
         self.retrieve_categories_tier(&query_embedding, &mut context_parts, &mut total_length)
             .await;
+
+        // Sufficiency check after Tier 1
+        if self.retrieval_config.sufficiency_check_enabled {
+            if let Some(checker) = &self.sufficiency_checker {
+                let retrieved = context_parts.join("\n");
+                match checker.check(&active_query, &retrieved).await {
+                    Ok(check) => {
+                        active_query = check.rewritten_query;
+                        if !check.needs_more {
+                            info!("Sufficient content after categories, skipping items/resources");
+                            return self.build_final_prompt(&context_parts);
+                        }
+                    }
+                    Err(e) => {
+                        debug!(
+                            "Sufficiency check failed after categories: {e}, continuing retrieval"
+                        );
+                    }
+                }
+            }
+        }
+
+        // Tier 2: Items (only if needed)
         self.retrieve_items_tier(&query_embedding, &mut context_parts, &mut total_length)
             .await;
+
+        // Sufficiency check after Tier 2
+        if self.retrieval_config.sufficiency_check_enabled {
+            if let Some(checker) = &self.sufficiency_checker {
+                let retrieved = context_parts.join("\n");
+                match checker.check(&active_query, &retrieved).await {
+                    Ok(check) => {
+                        active_query = check.rewritten_query;
+                        if !check.needs_more {
+                            info!("Sufficient content after items, skipping resources");
+                            return self.build_final_prompt(&context_parts);
+                        }
+                    }
+                    Err(e) => {
+                        debug!("Sufficiency check failed after items: {e}, continuing retrieval");
+                    }
+                }
+            }
+        }
+
+        // Tier 3: Resources (only if needed)
         self.retrieve_resources_tier(&query_embedding, &mut context_parts, &mut total_length)
             .await;
 
+        self.build_final_prompt(&context_parts)
+    }
+
+    /// Build the final prompt from context parts
+    fn build_final_prompt(&self, context_parts: &[String]) -> String {
         if context_parts.is_empty() {
             return "You are a helpful AI assistant.".to_string();
         }
 
         let memory_context = context_parts.join("\n");
+        let total_length = context_parts.iter().map(|p| p.len()).sum::<usize>();
+
         info!(
             "Built context with {} chars (target: {})",
             total_length, self.retrieval_config.context_target_length
@@ -440,7 +528,51 @@ where
             }
 
             debug!("Stored interaction as memories with embeddings");
+
+            // Trigger category compression if enabled
+            if self.retrieval_config.enable_category_compression {
+                if let (Some(compressor), Some(category_manager)) =
+                    (&self.category_compressor, &self.category_manager)
+                {
+                    let new_item_ids = vec![user_memory.id, assistant_memory.id];
+                    if let Err(e) = self
+                        .compress_categories_due_to_new_memories(
+                            category_manager,
+                            compressor,
+                            &new_item_ids,
+                        )
+                        .await
+                    {
+                        debug!("Failed to compress categories: {e}");
+                    }
+                }
+            }
         }
+    }
+
+    /// Compress categories that have new memories
+    async fn compress_categories_due_to_new_memories(
+        &self,
+        _category_manager: &Arc<dyn MemoryCategoryRepo>,
+        _compressor: &Arc<dyn CategoryCompressor>,
+        _item_ids: &[Uuid],
+    ) -> anyhow::Result<()> {
+        // This is a placeholder for the category compression logic
+        // The actual implementation would:
+        // 1. Find categories linked to the new items
+        // 2. For each category, fetch the current summary and new items
+        // 3. Call the compressor to generate a new summary
+        // 4. Update the category with the compressed summary
+
+        if self.retrieval_config.enable_category_compression {
+            debug!(
+                "Category compression enabled, would compress categories for {} new items",
+                _item_ids.len()
+            );
+            // TODO: Implement actual compression logic once category-item linking is in place
+        }
+
+        Ok(())
     }
 
     pub fn stop(&self) {

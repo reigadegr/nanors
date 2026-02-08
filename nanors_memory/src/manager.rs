@@ -62,13 +62,14 @@ impl MemoryManager {
 #[async_trait]
 impl MemoryItemRepo for MemoryManager {
     async fn insert(&self, item: &MemoryItem) -> anyhow::Result<()> {
+        let embedding_json = convert::embedding_option_to_json(item.embedding.as_ref());
         let model = memory_items::ActiveModel {
             id: Set(item.id),
             user_scope: Set(item.user_scope.clone()),
             resource_id: Set(item.resource_id),
             memory_type: Set(item.memory_type.to_string()),
             summary: Set(item.summary.clone()),
-            embedding: Set(convert::embedding_option_to_json(item.embedding.as_ref())),
+            embedding: Set(embedding_json),
             happened_at: Set(item.happened_at.into()),
             extra: Set(item.extra.clone()),
             content_hash: Set(item.content_hash.clone()),
@@ -175,10 +176,24 @@ impl MemoryItemRepo for MemoryManager {
             })
             .collect();
 
-        scores.sort_by(|a, b| b.score.total_cmp(&a.score));
-        scores.truncate(top_k);
+        // Filter out items that are essentially the same as the query (similarity >= 0.95)
+        // to avoid returning the exact same question back to the user
+        let mut filtered_scores: Vec<SalienceScore> = scores
+            .into_iter()
+            .filter(|score| {
+                let sim = score
+                    .item
+                    .embedding
+                    .as_ref()
+                    .map_or(0.0, |emb| scoring::cosine_similarity(query_embedding, emb));
+                sim < 0.95
+            })
+            .collect();
 
-        Ok(scores)
+        filtered_scores.sort_by(|a, b| b.score.total_cmp(&a.score));
+        filtered_scores.truncate(top_k);
+
+        Ok(filtered_scores)
     }
 
     async fn backfill_embeddings(

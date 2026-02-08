@@ -150,6 +150,9 @@ impl Config {
                     resources_enabled: true,
                     resources_top_k: 2,
                     context_target_length: 2000,
+                    sufficiency_check_enabled: false,
+                    enable_category_compression: false,
+                    category_summary_target_length: 400,
                 },
             },
         };

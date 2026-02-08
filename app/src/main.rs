@@ -44,6 +44,9 @@ async fn setup_memory_agent(
         resources_enabled: config.memory.retrieval.resources_enabled,
         resources_top_k: config.memory.retrieval.resources_top_k,
         context_target_length: config.memory.retrieval.context_target_length,
+        sufficiency_check_enabled: config.memory.retrieval.sufficiency_check_enabled,
+        enable_category_compression: config.memory.retrieval.enable_category_compression,
+        category_summary_target_length: config.memory.retrieval.category_summary_target_length,
     };
 
     info!(

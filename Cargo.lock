@@ -1357,6 +1357,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "regex",
  "serde",
  "serde_json",
  "sha2",
