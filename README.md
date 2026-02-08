@@ -15,7 +15,8 @@ nanobot 的 Rust 重写实现，采用渐进式开发策略和 workspace 架构�
 ```
 nanors/
 ├── Cargo.toml              # workspace 配置
-├── debug.sh               # clippy 检测脚本
+├── debug.sh               # 格式化 + clippy 检查
+├── fix.sh                 # 自动修复 clippy 警告
 ├── app/                  # CLI 入口
 │   └── src/main.rs
 ├── nanors_core/          # 核心抽象
@@ -31,14 +32,13 @@ nanors/
     └── src/
 ```
 
-## 配置文件位置
+## 配置和数据文件
 
-所有配置和数据文件统一放在 `~/.nanobot` 目录下：
+所有配置和数据文件统一放在 `~/.nanobot` 目录：
 
 ```
 ~/.nanobot/
-├── config.json          # 配置文件（必需）
-├── config.json.example  # 示例配置（init 时创建）
+├── config.json          # 配置文件（必需，init 时创建）
 └── sessions.db         # 数据库文件（自动创建）
 ```
 
@@ -79,17 +79,15 @@ sea-orm = { version = "2.0.0-rc.30", features = [
 ### 1. 初始化配置
 
 ```bash
-cargo run -- init
+nanobot init
 ```
 
-这将创建 `~/.nanobot/config.json.example`。
+这将直接创建 `~/.nanobot/config.json` 配置文件。
 
 ### 2. 编辑配置
 
 ```bash
-cd ~/.nanobot
-cp config.json.example config.json
-# 编辑 config.json，填入你的智谱 API Key
+# 编辑 ~/.nanobot/config.json，填入你的智谱 API Key
 ```
 
 配置文件格式：
@@ -116,19 +114,19 @@ cp config.json.example config.json
 交互式对话：
 
 ```bash
-cargo run -- agent
+nanobot agent
 ```
 
 单次查询：
 
 ```bash
-cargo run -- agent -m "你好"
+nanobot agent -m "你好"
 ```
 
 指定模型：
 
 ```bash
-cargo run -- agent -m "你好" --model glm-4-plus
+nanobot agent -m "你好" --model glm-4-plus
 ```
 
 ## 命令说明
@@ -162,6 +160,9 @@ nanobot agent -m "你好" -M glm-4-plus
 nanobot init
 ```
 
+- 如果配置文件已存在，会提示用户直接编辑
+- 如果配置文件不存在，会创建新的配置文件
+
 ### `nanobot version`
 
 显示版本信息。
@@ -186,15 +187,27 @@ cargo build --release
 
 ### 代码检查
 
-使用 `debug.sh` 进行 clippy 检查：
+**格式化 + 检查：**
 
 ```bash
 ./debug.sh
 ```
 
-该脚本会设置编译优化选项并运行 clippy。
+该脚本会：
+1. 运行 `cargo fmt` 格式化 Rust 代码
+2. 运行 `taplo fmt` 格式化所有 TOML 文件
+3. 运行 `cargo clippy` 检查代码质量
+
+**自动修复：**
+
+```bash
+./fix.sh
+```
+
+该脚本会自动修复 clippy 警告。
 
 **编译选项：**
+
 ```bash
 export RUSTFLAGS="-Z function-sections=yes -C link-arg=-fuse-ld=/usr/bin/mold -C link-args=-Wl,--gc-sections,--as-needed"
 ```
@@ -254,7 +267,6 @@ export RUSTFLAGS="-Z function-sections=yes -C link-arg=-fuse-ld=/usr/bin/mold -C
 ```
 ~/.nanobot/
 ├── config.json          # 配置文件（必需）
-├── config.json.example  # 示例配置
 └── sessions.db         # 数据库文件（自动创建）
 ```
 

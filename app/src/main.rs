@@ -91,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Commands::Init => {
-            Config::create_example_config()?;
+            Config::create_config()?;
         }
         Commands::Version => {
             println!("nanobot {}", env!("CARGO_PKG_VERSION"));

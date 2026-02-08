@@ -39,7 +39,7 @@ impl Config {
 
         if !config_path.exists() {
             anyhow::bail!(
-                "Config file not found at: {}. Please create a config file with your Zhipu API key.",
+                "Config file not found at: {}. Please run 'nanobot init' to create config.",
                 config_path.display()
             );
         }
@@ -59,11 +59,19 @@ impl Config {
         Ok(config_dir)
     }
 
-    pub fn create_example_config() -> anyhow::Result<()> {
+    pub fn create_config() -> anyhow::Result<()> {
         let config_dir = Self::ensure_config_dir()?;
-        let config_path = config_dir.join("config.json.example");
+        let config_path = config_dir.join("config.json");
 
-        let example = Self {
+        // 检查是否已存在
+        if config_path.exists() {
+            anyhow::bail!(
+                "Config file already exists at: {}. Please edit it directly.",
+                config_path.display()
+            );
+        }
+
+        let config = Self {
             agents: AgentsConfig {
                 defaults: AgentDefaults {
                     model: "glm-4-flash".to_string(),
@@ -78,11 +86,11 @@ impl Config {
             },
         };
 
-        let content = serde_json::to_string_pretty(&example)?;
+        let content = serde_json::to_string_pretty(&config)?;
         std::fs::write(&config_path, content)?;
 
-        println!("Created example config at: {}", config_path.display());
-        println!("Please edit it and rename to config.json");
+        println!("Created config file at: {}", config_path.display());
+        println!("Please edit it and add your Zhipu API key.");
         Ok(())
     }
 }
