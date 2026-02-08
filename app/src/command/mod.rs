@@ -1,0 +1,87 @@
+//! Static strategy pattern for CLI commands.
+//!
+//! This module implements a zero-allocation, static dispatch strategy pattern
+//! inspired by the `MetricAdapter` pattern. Each command is a separate strategy
+//! with its own type, enabling compile-time optimization and zero runtime overhead.
+
+use nanors_config::Config;
+use nanors_core::AgentLoop;
+use nanors_memory::MemoryManager;
+use nanors_providers::ZhipuProvider;
+use nanors_session::SessionManager;
+use std::sync::Arc;
+use tracing::info;
+
+mod agent;
+mod info;
+mod init;
+mod version;
+
+/// Set up memory agent with tiered retrieval.
+///
+/// This is a shared utility function used by the `AgentStrategy`.
+async fn setup_memory_agent(
+    config: &Config,
+    agent: AgentLoop<ZhipuProvider, SessionManager>,
+) -> anyhow::Result<AgentLoop<ZhipuProvider, SessionManager>> {
+    info!("Memory feature enabled, initializing MemoryManager");
+    let memory_manager = Arc::new(MemoryManager::new(&config.database.url).await?);
+    let user_scope = config.memory.default_user_scope.clone();
+
+    let retrieval_config = config.memory.retrieval.clone();
+
+    info!(
+        "Tiered retrieval config: categories_top_k={}, items_top_k={}, resources_top_k={}, context_target_length={}",
+        retrieval_config.categories_top_k,
+        retrieval_config.items_top_k,
+        retrieval_config.resources_top_k,
+        retrieval_config.context_target_length
+    );
+
+    Ok(agent
+        .with_memory(memory_manager.clone(), user_scope)
+        .with_tiered_retrieval(memory_manager.clone(), memory_manager, retrieval_config))
+}
+
+pub use agent::{AgentInput, AgentStrategy};
+pub use info::InfoStrategy;
+pub use init::InitStrategy;
+pub use version::VersionStrategy;
+
+/// Core trait defining the contract for all command strategies.
+///
+/// # Design Principles
+/// - **Zero allocation**: No heap allocation required
+/// - **Static dispatch**: All calls are monomorphized at compile time
+/// - **Type safety**: Each strategy defines its own input type via associated type
+/// - **Extensibility**: Adding new commands requires only implementing this trait
+///
+/// # Example
+/// ```rust
+/// struct MyStrategy;
+///
+/// impl CommandStrategy for MyStrategy {
+///     type Input = MyInput;
+///
+///     async fn execute(&self, input: Self::Input) -> anyhow::Result<()> {
+///         // Command logic here
+///         Ok(())
+///     }
+/// }
+/// ```
+pub trait CommandStrategy: Send + Sync + 'static {
+    /// The input type this strategy accepts.
+    ///
+    /// Each strategy can define its own input type, enabling type-safe
+    /// parameter passing without runtime casting or boxing.
+    type Input;
+
+    /// Execute the command with the given input.
+    ///
+    /// This is the core method where each strategy implements its command logic.
+    /// The method is async but uses static dispatch - no dynamic trait objects.
+    ///
+    /// # Errors
+    /// Returns an error if command execution fails.
+    async fn execute(&self, input: Self::Input) -> anyhow::Result<()>;
+}

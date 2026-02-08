@@ -17,55 +17,15 @@
     clippy::missing_errors_doc
 )]
 
+mod command;
+
 use clap::{Parser, Subcommand};
-use nanors_config::Config;
-use nanors_core::{AgentConfig, AgentLoop};
-use nanors_memory::MemoryManager;
-use nanors_providers::ZhipuProvider;
-use nanors_session::SessionManager;
-use std::sync::Arc;
-use tracing::{Level, info};
+use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
-use uuid::Uuid;
 
-async fn setup_memory_agent(
-    config: &Config,
-    agent: AgentLoop<ZhipuProvider, SessionManager>,
-) -> anyhow::Result<AgentLoop<ZhipuProvider, SessionManager>> {
-    info!("Memory feature enabled, initializing MemoryManager");
-    let memory_manager = Arc::new(MemoryManager::new(&config.database.url).await?);
-    let user_scope = config.memory.default_user_scope.clone();
-
-    let retrieval_config = config.memory.retrieval.clone();
-
-    info!(
-        "Tiered retrieval config: categories_top_k={}, items_top_k={}, resources_top_k={}, context_target_length={}",
-        retrieval_config.categories_top_k,
-        retrieval_config.items_top_k,
-        retrieval_config.resources_top_k,
-        retrieval_config.context_target_length
-    );
-
-    Ok(agent
-        .with_memory(memory_manager.clone(), user_scope)
-        .with_tiered_retrieval(memory_manager.clone(), memory_manager, retrieval_config))
-}
-
-fn mask_database_url(url: &str) -> String {
-    let Some((scheme, rest)) = url.split_once("://") else {
-        return url.to_string();
-    };
-
-    let Some((credentials, after_at)) = rest.split_once('@') else {
-        return url.to_string();
-    };
-
-    let Some((username, _password)) = credentials.split_once(':') else {
-        return url.to_string();
-    };
-
-    format!("{scheme}://{username}:***{after_at}")
-}
+use command::{
+    AgentInput, AgentStrategy, CommandStrategy, InfoStrategy, InitStrategy, VersionStrategy,
+};
 
 #[derive(Parser)]
 #[command(name = "nanors")]
@@ -105,92 +65,21 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
 
+    // Static dispatch to command strategies.
+    // Each strategy is a zero-sized type (ZST) with no runtime overhead.
+    // The compiler will monomorphize each call, enabling full optimization.
     match cli.command {
         Commands::Agent { message, model } => {
-            let config = Config::load()?;
-            info!("Loaded config from ~/nanors/config.json");
-
-            let provider = ZhipuProvider::new(config.providers.zhipu.api_key.clone());
-
-            info!("Connecting to database");
-            let session_manager = SessionManager::new(&config.database.url).await?;
-
-            let agent_config = AgentConfig {
-                model: model.unwrap_or_else(|| config.agents.defaults.model.clone()),
-                max_tokens: config.agents.defaults.max_tokens,
-                temperature: config.agents.defaults.temperature,
-            };
-
-            let agent = AgentLoop::new(provider, session_manager, agent_config);
-
-            let agent = if config.memory.enabled {
-                setup_memory_agent(&config, agent).await?
-            } else {
-                info!("Memory feature disabled");
-                agent
-            };
-
-            if let Some(msg) = message {
-                let session_id = Uuid::now_v7();
-                let response = agent.process_message(&session_id, &msg).await?;
-                println!("{response}");
-            } else {
-                agent.run_interactive().await?;
-            }
+            AgentStrategy.execute(AgentInput { message, model }).await?;
         }
         Commands::Init => {
-            Config::create_config()?;
+            InitStrategy.execute(()).await?;
         }
         Commands::Version => {
-            println!("nanors {}", env!("CARGO_PKG_VERSION"));
+            VersionStrategy.execute(()).await?;
         }
         Commands::Info => {
-            let config = Config::load()?;
-
-            println!("=== nanors Configuration ===\n");
-
-            println!("API Key:");
-            let api_key = &config.providers.zhipu.api_key;
-            if api_key.len() > 8 {
-                let masked = format!("{}...{}", &api_key[..4], &api_key[api_key.len() - 4..]);
-                println!("  Zhipu: {masked}");
-            } else {
-                println!("  Zhipu: ***");
-            }
-            println!();
-
-            println!("Database:");
-            let db_url = &config.database.url;
-            println!("  URL: {}", mask_database_url(db_url));
-
-            info!("Testing database connection");
-            match SessionManager::new(db_url).await {
-                Ok(_) => {
-                    println!("  Status: ✅ Connected");
-                }
-                Err(e) => {
-                    println!("  Status: ❌ Connection failed");
-                    println!("  Error: {e}");
-                }
-            }
-            println!();
-
-            println!("Agent Defaults:");
-            println!("  Model: {}", config.agents.defaults.model);
-            println!("  Max Tokens: {}", config.agents.defaults.max_tokens);
-            println!("  Temperature: {}", config.agents.defaults.temperature);
-            println!();
-
-            println!("Memory:");
-            println!(
-                "  Enabled: {}",
-                if config.memory.enabled {
-                    "✅ Yes"
-                } else {
-                    "❌ No"
-                }
-            );
-            println!("  Default User Scope: {}", config.memory.default_user_scope);
+            InfoStrategy.execute(()).await?;
         }
     }
 
