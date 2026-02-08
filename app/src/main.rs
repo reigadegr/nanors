@@ -38,11 +38,11 @@ enum Commands {
     /// Run agent interactively
     Agent {
         /// Single message to send
-        #[arg(short, long)]
+        #[arg(short = 'm', long)]
         message: Option<String>,
 
         /// Model to use
-        #[arg(short, long)]
+        #[arg(short = 'M', long)]
         model: Option<String>,
     },
     /// Initialize configuration

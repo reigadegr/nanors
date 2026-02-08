@@ -96,7 +96,7 @@ nanobot init
 {
   "agents": {
     "defaults": {
-      "model": "glm-4-flash",
+      "model": "glm-4.7",
       "max_tokens": 8192,
       "temperature": 0.7
     }
@@ -126,7 +126,7 @@ nanobot agent -m "你好"
 指定模型：
 
 ```bash
-nanobot agent -m "你好" --model glm-4-plus
+nanobot agent -m "你好" --model glm-4.7
 ```
 
 ## 命令说明
@@ -149,7 +149,7 @@ nanobot agent
 nanobot agent -m "今天天气怎么样？"
 
 # 指定模型
-nanobot agent -m "你好" -M glm-4-plus
+nanobot agent -m "你好" -M glm-4.7
 ```
 
 ### `nanobot init`

@@ -19,11 +19,18 @@
 
 use async_trait::async_trait;
 use nanors_core::{ChatMessage, Role, Session as CoreSession, SessionStorage};
-use sea_orm::{ActiveModelTrait, Database, DatabaseConnection, DbErr, EntityTrait, Set};
+use sea_orm::{
+    ActiveModelTrait, ConnectionTrait, Database, DatabaseConnection, DbErr, EntityTrait, Schema,
+    Set,
+};
 use std::path::PathBuf;
 use tracing::info;
 
 use crate::entity::sessions;
+
+fn is_table_already_exists_error(err: &DbErr) -> bool {
+    err.to_string().contains("table") && err.to_string().contains("already exists")
+}
 
 pub struct SessionManager {
     db: DatabaseConnection,
@@ -35,6 +42,21 @@ impl SessionManager {
         info!("Connecting to database: {}", db_url);
 
         let db = Database::connect(&db_url).await?;
+
+        let backend = db.get_database_backend();
+        let schema = Schema::new(backend);
+        let stmt = schema.create_table_from_entity(sessions::Entity);
+        let builder = db.get_database_backend();
+        match db
+            .execute_unprepared(&builder.build(&stmt).to_string())
+            .await
+        {
+            Ok(_) => {}
+            Err(e) if is_table_already_exists_error(&e) => {
+                info!("Table already exists, skipping creation");
+            }
+            Err(e) => return Err(e.into()),
+        }
 
         info!("SessionManager initialized");
         Ok(Self { db })
@@ -96,34 +118,32 @@ impl SessionStorage for SessionManager {
         let now = session.updated_at.naive_utc();
         let created_at = session.created_at.naive_utc();
 
-        let result = sessions::Entity::update(sessions::ActiveModel {
-            key: Set(session.key.clone()),
-            messages: Set(messages_json.clone()),
-            created_at: Set(created_at),
-            updated_at: Set(now),
-        })
-        .exec(&self.db)
-        .await;
+        let exists = sessions::Entity::find_by_id(key.to_owned())
+            .one(&self.db)
+            .await?
+            .is_some();
 
-        match result {
-            Ok(_) => {
-                info!("Added message to session: {}", key);
-                Ok(())
+        if exists {
+            sessions::Entity::update(sessions::ActiveModel {
+                key: Set(session.key.clone()),
+                messages: Set(messages_json.clone()),
+                created_at: Set(created_at),
+                updated_at: Set(now),
+            })
+            .exec(&self.db)
+            .await?;
+        } else {
+            sessions::ActiveModel {
+                key: Set(session.key),
+                messages: Set(messages_json),
+                created_at: Set(created_at),
+                updated_at: Set(now),
             }
-            Err(DbErr::RecordNotFound(_)) => {
-                sessions::ActiveModel {
-                    key: Set(session.key),
-                    messages: Set(messages_json),
-                    created_at: Set(created_at),
-                    updated_at: Set(now),
-                }
-                .insert(&self.db)
-                .await?;
-
-                info!("Added message to session: {}", key);
-                Ok(())
-            }
-            Err(e) => Err(e.into()),
+            .insert(&self.db)
+            .await?;
         }
+
+        info!("Added message to session: {}", key);
+        Ok(())
     }
 }
