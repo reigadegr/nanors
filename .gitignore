@@ -1,1 +1,3 @@
 /target
+.env
+.sea-orm-cli.toml
