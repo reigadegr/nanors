@@ -31,11 +31,12 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
 
 /// Compute salience score for a memory item.
 ///
-/// Formula: `similarity * (1 + ln(1 + reinforcement_count)) * 1/ln(1 + hours_ago)`
+/// Formula: `similarity * (1 + ln(1 + reinforcement_count)) * 1/ln(2 + hours_ago)`
 ///
 /// This mirrors memU's scoring strategy where more recent and more
 /// reinforced memories rank higher. The minimum reinforcement factor is 1.0
 /// to ensure that even unreinforced memories can rank based on similarity.
+/// Using `+2` in the recency denominator prevents division by zero when `hours_ago` is 0.
 #[must_use]
 #[allow(clippy::cast_precision_loss)]
 pub fn compute_salience(
@@ -48,7 +49,8 @@ pub fn compute_salience(
     let hours_ago = (now - happened_at).num_seconds().max(1) as f64 / 3600.0;
     // Use 1.0 + ln(1 + reinforcement_count) to ensure non-zero factor for unreinforced memories
     let reinforcement = 1.0 + f64::from(reinforcement_count).ln_1p();
-    let recency = 1.0 / hours_ago.ln_1p();
+    // Use ln(2 + hours_ago) to prevent division by zero when hours_ago is 0
+    let recency = 1.0 / (hours_ago + 1.0).ln_1p();
 
     similarity * reinforcement * recency
 }
