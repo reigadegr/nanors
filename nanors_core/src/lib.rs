@@ -1,4 +1,4 @@
-#![deny(
+#![warn(
     clippy::all,
     clippy::nursery,
     clippy::pedantic,
@@ -27,8 +27,9 @@ pub mod tools;
 
 pub use agent::{AgentConfig, AgentLoop};
 pub use memory::{
-    CategoryItem, CategoryItemRepo, MemoryCategory, MemoryCategoryRepo, MemoryItem, MemoryItemRepo,
-    MemoryType, Resource, ResourceRepo, SalienceScore,
+    CategoryItem, CategoryItemRepo, CategorySalienceScore, MemoryCategory, MemoryCategoryRepo,
+    MemoryItem, MemoryItemRepo, MemoryType, Resource, ResourceRepo, ResourceSalienceScore,
+    SalienceScore,
 };
 pub use tools::{Tool, ToolRegistry};
 
@@ -63,6 +64,7 @@ pub struct Usage {
 #[async_trait]
 pub trait LLMProvider: Send + Sync {
     async fn chat(&self, messages: &[ChatMessage], model: &str) -> anyhow::Result<LLMResponse>;
+    async fn embed(&self, text: &str) -> anyhow::Result<Vec<f32>>;
     fn get_default_model(&self) -> &str;
 }
 

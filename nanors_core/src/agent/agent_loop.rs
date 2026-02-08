@@ -5,8 +5,33 @@ use tracing::{debug, info};
 use uuid::Uuid;
 
 use crate::{
-    ChatMessage, LLMProvider, MemoryItem, MemoryItemRepo, MemoryType, Role, SessionStorage,
+    ChatMessage, LLMProvider, MemoryCategoryRepo, MemoryItem, MemoryItemRepo, MemoryType,
+    ResourceRepo, Role, SessionStorage,
 };
+
+/// Tiered retrieval configuration based on memU's approach
+#[derive(Debug, Clone)]
+pub struct RetrievalConfig {
+    pub categories_enabled: bool,
+    pub categories_top_k: usize,
+    pub items_top_k: usize,
+    pub resources_enabled: bool,
+    pub resources_top_k: usize,
+    pub context_target_length: usize,
+}
+
+impl Default for RetrievalConfig {
+    fn default() -> Self {
+        Self {
+            categories_enabled: true,
+            categories_top_k: 3,
+            items_top_k: 5,
+            resources_enabled: true,
+            resources_top_k: 2,
+            context_target_length: 2000,
+        }
+    }
+}
 
 pub struct AgentLoop<P = Arc<dyn LLMProvider>, S = Arc<dyn SessionStorage>>
 where
@@ -18,7 +43,10 @@ where
     config: AgentConfig,
     running: Arc<AtomicBool>,
     memory_manager: Option<Arc<dyn MemoryItemRepo>>,
+    category_manager: Option<Arc<dyn MemoryCategoryRepo>>,
+    resource_manager: Option<Arc<dyn ResourceRepo>>,
     user_scope: String,
+    retrieval_config: RetrievalConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -50,7 +78,10 @@ where
             config,
             running: Arc::new(AtomicBool::new(true)),
             memory_manager: None,
+            category_manager: None,
+            resource_manager: None,
             user_scope: String::new(),
+            retrieval_config: RetrievalConfig::default(),
         }
     }
 
@@ -63,6 +94,20 @@ where
     ) -> Self {
         self.memory_manager = Some(memory_manager);
         self.user_scope = user_scope;
+        self
+    }
+
+    /// Set the category and resource managers for tiered retrieval
+    #[must_use]
+    pub fn with_tiered_retrieval(
+        mut self,
+        category_manager: Arc<dyn MemoryCategoryRepo>,
+        resource_manager: Arc<dyn ResourceRepo>,
+        retrieval_config: RetrievalConfig,
+    ) -> Self {
+        self.category_manager = Some(category_manager);
+        self.resource_manager = Some(resource_manager);
+        self.retrieval_config = retrieval_config;
         self
     }
 
@@ -102,7 +147,9 @@ where
     ) -> anyhow::Result<String> {
         info!("Processing message from session: {}", session_id);
 
-        let system_prompt = self.build_system_prompt().await;
+        let system_prompt = self
+            .build_system_prompt_with_tiered_retrieval(content)
+            .await;
 
         let messages = vec![
             ChatMessage {
@@ -124,75 +171,196 @@ where
                 msg.content.len()
             );
             if msg.role == Role::System {
-                info!("System prompt: {}", msg.content);
+                debug!("System prompt: {}", msg.content);
             }
         }
 
         let response = self.provider.chat(&messages, &self.config.model).await?;
 
         self.save_to_session(session_id, content, &response).await?;
-        self.save_to_memory(content, &response).await;
+        self.save_to_memory_with_embeddings(content, &response)
+            .await;
 
         Ok(response.content)
     }
 
-    /// Build the system prompt with memory context
-    async fn build_system_prompt(&self) -> String {
-        if let Some(memory) = &self.memory_manager {
-            info!(
-                "Memory manager available, user_scope: '{}'",
-                self.user_scope
-            );
-            debug!("Searching for relevant memories");
-
-            match memory.list_by_scope(&self.user_scope).await {
-                Ok(memories) => {
-                    eprintln!("[DEBUG] Found {} memories in database", memories.len());
-                    if memories.is_empty() {
-                        return "You are a helpful AI assistant.".to_string();
-                    }
-
-                    let user_memories: Vec<_> = memories
-                        .iter()
-                        .rev()
-                        .take(10)
-                        .filter(|m| {
-                            let starts_with_user = m.summary.starts_with("User:");
-                            if !starts_with_user {
-                                debug!(
-                                    "Skipping non-user memory: {}",
-                                    m.summary.chars().take(20).collect::<String>()
-                                );
-                            }
-                            starts_with_user
-                        })
-                        .collect();
-
-                    info!("Filtered to {} user memories", user_memories.len());
-
-                    if user_memories.is_empty() {
-                        return "You are a helpful AI assistant.".to_string();
-                    }
-
-                    let memory_context: String = user_memories
-                        .iter()
-                        .map(|m| format!("- {}", m.summary))
-                        .collect::<Vec<_>>()
-                        .join("\n");
-
-                    format!(
-                        "You are a helpful AI assistant with memory of past conversations.\n\nHere are relevant memories from previous conversations:\n{memory_context}\n\nUse this context to provide better, more personalized responses."
-                    )
-                }
-                Err(e) => {
-                    info!("Failed to retrieve memories: {}", e);
-                    "You are a helpful AI assistant.".to_string()
-                }
-            }
+    /// Add context part if within target length, returns updated total length
+    fn add_context_part(
+        context_parts: &mut Vec<String>,
+        text: String,
+        total_length: usize,
+        target_length: usize,
+    ) -> usize {
+        let text_len = text.len();
+        if total_length + text_len > target_length {
+            total_length
         } else {
-            info!("No memory manager available");
-            "You are a helpful AI assistant.".to_string()
+            context_parts.push(text);
+            total_length + text_len
         }
+    }
+
+    /// Retrieve and format tier 1 categories
+    async fn retrieve_categories_tier(
+        &self,
+        query_embedding: &[f32],
+        context_parts: &mut Vec<String>,
+        total_length: &mut usize,
+    ) {
+        if !self.retrieval_config.categories_enabled {
+            return;
+        }
+        let Some(category_manager) = &self.category_manager else {
+            return;
+        };
+
+        let Ok(categories) = category_manager
+            .search_by_embedding(
+                &self.user_scope,
+                query_embedding,
+                self.retrieval_config.categories_top_k,
+            )
+            .await
+        else {
+            return;
+        };
+
+        info!("Tier 1: Retrieved {} categories", categories.len());
+        for cat_score in categories {
+            let text = if let Some(summary) = &cat_score.category.summary {
+                format!("Category: {} - {}", cat_score.category.name, summary)
+            } else {
+                format!("Category: {}", cat_score.category.name)
+            };
+            *total_length = Self::add_context_part(
+                context_parts,
+                text,
+                *total_length,
+                self.retrieval_config.context_target_length,
+            );
+        }
+    }
+
+    /// Retrieve and format tier 2 memory items
+    async fn retrieve_items_tier(
+        &self,
+        query_embedding: &[f32],
+        context_parts: &mut Vec<String>,
+        total_length: &mut usize,
+    ) {
+        let Some(memory_manager) = &self.memory_manager else {
+            return;
+        };
+
+        let Ok(items) = memory_manager
+            .search_by_embedding(
+                &self.user_scope,
+                query_embedding,
+                self.retrieval_config.items_top_k,
+            )
+            .await
+        else {
+            return;
+        };
+
+        info!("Tier 2: Retrieved {} items", items.len());
+        for item_score in items {
+            let text = format!("- {}", item_score.item.summary);
+            *total_length = Self::add_context_part(
+                context_parts,
+                text,
+                *total_length,
+                self.retrieval_config.context_target_length,
+            );
+        }
+    }
+
+    /// Retrieve and format tier 3 resources
+    async fn retrieve_resources_tier(
+        &self,
+        query_embedding: &[f32],
+        context_parts: &mut Vec<String>,
+        total_length: &mut usize,
+    ) {
+        if !self.retrieval_config.resources_enabled {
+            return;
+        }
+        let Some(resource_manager) = &self.resource_manager else {
+            return;
+        };
+
+        let Ok(resources) = resource_manager
+            .search_by_embedding(
+                &self.user_scope,
+                query_embedding,
+                self.retrieval_config.resources_top_k,
+            )
+            .await
+        else {
+            return;
+        };
+
+        info!("Tier 3: Retrieved {} resources", resources.len());
+        for res_score in resources {
+            let caption = res_score
+                .resource
+                .caption
+                .as_deref()
+                .unwrap_or("Untitled resource");
+            let text = format!("[Resource: {caption}]");
+            *total_length = Self::add_context_part(
+                context_parts,
+                text,
+                *total_length,
+                self.retrieval_config.context_target_length,
+            );
+        }
+    }
+
+    /// Build the system prompt using tiered retrieval (memU-style)
+    async fn build_system_prompt_with_tiered_retrieval(&self, query: &str) -> String {
+        if self.memory_manager.is_none() {
+            return "You are a helpful AI assistant.".to_string();
+        }
+
+        info!(
+            "Using tiered retrieval with config: categories_top_k={}, items_top_k={}, context_target_length={}",
+            self.retrieval_config.categories_top_k,
+            self.retrieval_config.items_top_k,
+            self.retrieval_config.context_target_length
+        );
+
+        let query_embedding = match self.provider.embed(query).await {
+            Ok(embedding) => embedding,
+            Err(e) => {
+                info!("Failed to generate query embedding: {e}, falling back to default");
+                return "You are a helpful AI assistant.".to_string();
+            }
+        };
+
+        let mut context_parts = Vec::new();
+        let mut total_length = 0_usize;
+
+        self.retrieve_categories_tier(&query_embedding, &mut context_parts, &mut total_length)
+            .await;
+        self.retrieve_items_tier(&query_embedding, &mut context_parts, &mut total_length)
+            .await;
+        self.retrieve_resources_tier(&query_embedding, &mut context_parts, &mut total_length)
+            .await;
+
+        if context_parts.is_empty() {
+            return "You are a helpful AI assistant.".to_string();
+        }
+
+        let memory_context = context_parts.join("\n");
+        info!(
+            "Built context with {} chars (target: {})",
+            total_length, self.retrieval_config.context_target_length
+        );
+
+        format!(
+            "You are a helpful AI assistant with memory of past conversations.\n\nHere are relevant memories from previous conversations:\n{memory_context}\n\nUse this context to provide better, more personalized responses."
+        )
     }
 
     /// Save messages to session storage
@@ -211,10 +379,22 @@ where
         Ok(())
     }
 
-    /// Save interaction to memory storage
-    async fn save_to_memory(&self, content: &str, response: &crate::LLMResponse) {
+    /// Save interaction to memory storage with embeddings
+    async fn save_to_memory_with_embeddings(&self, content: &str, response: &crate::LLMResponse) {
         if let Some(memory) = &self.memory_manager {
             let now = chrono::Utc::now();
+
+            // Generate embeddings for both user and assistant messages
+            let (user_embedding, assistant_embedding) = match tokio::join!(
+                self.provider.embed(content),
+                self.provider.embed(&response.content)
+            ) {
+                (Ok(u), Ok(a)) => (Some(u), Some(a)),
+                (Err(e), _) | (_, Err(e)) => {
+                    debug!("Failed to generate embeddings: {e}");
+                    (None, None)
+                }
+            };
 
             let user_memory = MemoryItem {
                 id: Uuid::now_v7(),
@@ -222,7 +402,7 @@ where
                 resource_id: None,
                 memory_type: MemoryType::Episodic,
                 summary: format!("User: {content}"),
-                embedding: None,
+                embedding: user_embedding,
                 happened_at: now,
                 extra: None,
                 content_hash: format!("{:x}", sha2::Sha256::digest(format!("episodic:{content}"))),
@@ -242,7 +422,7 @@ where
                 resource_id: None,
                 memory_type: MemoryType::Episodic,
                 summary: response_summary.clone(),
-                embedding: None,
+                embedding: assistant_embedding,
                 happened_at: now,
                 extra: None,
                 content_hash: format!(
@@ -258,7 +438,7 @@ where
                 debug!("Failed to store assistant memory: {e}");
             }
 
-            debug!("Stored interaction as memories");
+            debug!("Stored interaction as memories with embeddings");
         }
     }
 

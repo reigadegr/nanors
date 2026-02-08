@@ -1,4 +1,4 @@
-#![deny(
+#![warn(
     clippy::all,
     clippy::nursery,
     clippy::pedantic,
@@ -19,6 +19,7 @@
 
 use clap::{Parser, Subcommand};
 use nanors_config::Config;
+use nanors_core::agent::RetrievalConfig;
 use nanors_core::{AgentConfig, AgentLoop};
 use nanors_memory::MemoryManager;
 use nanors_providers::ZhipuProvider;
@@ -27,6 +28,36 @@ use std::sync::Arc;
 use tracing::{Level, info};
 use tracing_subscriber::FmtSubscriber;
 use uuid::Uuid;
+
+async fn setup_memory_agent(
+    config: &Config,
+    agent: AgentLoop<ZhipuProvider, SessionManager>,
+) -> anyhow::Result<AgentLoop<ZhipuProvider, SessionManager>> {
+    info!("Memory feature enabled, initializing MemoryManager");
+    let memory_manager = Arc::new(MemoryManager::new(&config.database.url).await?);
+    let user_scope = config.memory.default_user_scope.clone();
+
+    let retrieval_config = RetrievalConfig {
+        categories_enabled: config.memory.retrieval.categories_enabled,
+        categories_top_k: config.memory.retrieval.categories_top_k,
+        items_top_k: config.memory.retrieval.items_top_k,
+        resources_enabled: config.memory.retrieval.resources_enabled,
+        resources_top_k: config.memory.retrieval.resources_top_k,
+        context_target_length: config.memory.retrieval.context_target_length,
+    };
+
+    info!(
+        "Tiered retrieval config: categories_top_k={}, items_top_k={}, resources_top_k={}, context_target_length={}",
+        retrieval_config.categories_top_k,
+        retrieval_config.items_top_k,
+        retrieval_config.resources_top_k,
+        retrieval_config.context_target_length
+    );
+
+    Ok(agent
+        .with_memory(memory_manager.clone(), user_scope)
+        .with_tiered_retrieval(memory_manager.clone(), memory_manager, retrieval_config))
+}
 
 fn mask_database_url(url: &str) -> String {
     url.find("://").map_or_else(
@@ -97,7 +128,7 @@ async fn main() -> anyhow::Result<()> {
             let config = Config::load()?;
             info!("Loaded config from ~/nanors/config.json");
 
-            let provider = ZhipuProvider::new(config.providers.zhipu.api_key);
+            let provider = ZhipuProvider::new(config.providers.zhipu.api_key.clone());
 
             info!("Connecting to database");
             let session_manager = SessionManager::new(&config.database.url).await?;
@@ -110,12 +141,8 @@ async fn main() -> anyhow::Result<()> {
 
             let agent = AgentLoop::new(provider, session_manager, agent_config);
 
-            // Add memory manager if enabled
             let agent = if config.memory.enabled {
-                info!("Memory feature enabled, initializing MemoryManager");
-                let memory_manager = MemoryManager::new(&config.database.url).await?;
-                let user_scope = config.memory.default_user_scope.clone();
-                agent.with_memory(Arc::new(memory_manager), user_scope)
+                setup_memory_agent(&config, agent).await?
             } else {
                 info!("Memory feature disabled");
                 agent

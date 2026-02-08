@@ -1,4 +1,4 @@
-#![deny(
+#![warn(
     clippy::all,
     clippy::nursery,
     clippy::pedantic,

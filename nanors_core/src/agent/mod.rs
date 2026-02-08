@@ -1,3 +1,3 @@
 mod agent_loop;
 
-pub use agent_loop::{AgentConfig, AgentLoop};
+pub use agent_loop::{AgentConfig, AgentLoop, RetrievalConfig};

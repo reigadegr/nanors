@@ -29,6 +29,18 @@ pub trait MemoryItemRepo: Send + Sync {
     ) -> anyhow::Result<Vec<SalienceScore>>;
 }
 
+#[derive(Debug, Clone)]
+pub struct CategorySalienceScore {
+    pub category: MemoryCategory,
+    pub score: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResourceSalienceScore {
+    pub resource: Resource,
+    pub score: f64,
+}
+
 #[async_trait]
 pub trait MemoryCategoryRepo: Send + Sync {
     async fn insert(&self, cat: &MemoryCategory) -> anyhow::Result<()>;
@@ -46,6 +58,13 @@ pub trait MemoryCategoryRepo: Send + Sync {
     async fn delete(&self, id: &Uuid) -> anyhow::Result<()>;
 
     async fn list_by_scope(&self, user_scope: &str) -> anyhow::Result<Vec<MemoryCategory>>;
+
+    async fn search_by_embedding(
+        &self,
+        user_scope: &str,
+        query_embedding: &[f32],
+        top_k: usize,
+    ) -> anyhow::Result<Vec<CategorySalienceScore>>;
 }
 
 #[async_trait]
@@ -68,4 +87,11 @@ pub trait ResourceRepo: Send + Sync {
     async fn delete(&self, id: &Uuid) -> anyhow::Result<()>;
 
     async fn list_by_scope(&self, user_scope: &str) -> anyhow::Result<Vec<Resource>>;
+
+    async fn search_by_embedding(
+        &self,
+        user_scope: &str,
+        query_embedding: &[f32],
+        top_k: usize,
+    ) -> anyhow::Result<Vec<ResourceSalienceScore>>;
 }

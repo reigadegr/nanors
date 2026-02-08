@@ -1,6 +1,9 @@
 use async_trait::async_trait;
 use chrono::Utc;
-use nanors_core::memory::{CategoryItem, MemoryCategory, MemoryItem, Resource, SalienceScore};
+use nanors_core::memory::{
+    CategoryItem, CategorySalienceScore, MemoryCategory, MemoryItem, Resource,
+    ResourceSalienceScore, SalienceScore,
+};
 use nanors_core::{CategoryItemRepo, MemoryCategoryRepo, MemoryItemRepo, ResourceRepo};
 use nanors_entities::{category_items, memory_categories, memory_items, resources};
 use sea_orm::{
@@ -252,6 +255,34 @@ impl MemoryCategoryRepo for MemoryManager {
             .map(convert::memory_category_from_model)
             .collect())
     }
+
+    async fn search_by_embedding(
+        &self,
+        user_scope: &str,
+        query_embedding: &[f32],
+        top_k: usize,
+    ) -> anyhow::Result<Vec<CategorySalienceScore>> {
+        let categories: Vec<MemoryCategory> =
+            MemoryCategoryRepo::list_by_scope(self, user_scope).await?;
+
+        let mut scores: Vec<CategorySalienceScore> = categories
+            .into_iter()
+            .filter_map(|category| {
+                let embedding = category.embedding.as_ref()?;
+                let similarity = scoring::cosine_similarity(query_embedding, embedding);
+                // Categories don't have reinforcement counts, use similarity only
+                Some(CategorySalienceScore {
+                    category,
+                    score: similarity,
+                })
+            })
+            .collect();
+
+        scores.sort_by(|a, b| b.score.total_cmp(&a.score));
+        scores.truncate(top_k);
+
+        Ok(scores)
+    }
 }
 
 #[async_trait]
@@ -346,5 +377,32 @@ impl ResourceRepo for MemoryManager {
             .into_iter()
             .map(convert::resource_from_model)
             .collect())
+    }
+
+    async fn search_by_embedding(
+        &self,
+        user_scope: &str,
+        query_embedding: &[f32],
+        top_k: usize,
+    ) -> anyhow::Result<Vec<ResourceSalienceScore>> {
+        let resources: Vec<Resource> = ResourceRepo::list_by_scope(self, user_scope).await?;
+
+        let mut scores: Vec<ResourceSalienceScore> = resources
+            .into_iter()
+            .filter_map(|resource| {
+                let embedding = resource.embedding.as_ref()?;
+                let similarity = scoring::cosine_similarity(query_embedding, embedding);
+                // Resources don't have reinforcement counts, use similarity only
+                Some(ResourceSalienceScore {
+                    resource,
+                    score: similarity,
+                })
+            })
+            .collect();
+
+        scores.sort_by(|a, b| b.score.total_cmp(&a.score));
+        scores.truncate(top_k);
+
+        Ok(scores)
     }
 }

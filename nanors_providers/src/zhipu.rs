@@ -121,4 +121,33 @@ impl LLMProvider for ZhipuProvider {
     fn get_default_model(&self) -> &'static str {
         "glm-4-flash"
     }
+
+    async fn embed(&self, text: &str) -> anyhow::Result<Vec<f32>> {
+        let response = self
+            .client
+            .post(format!("{}/embeddings", self.base_url))
+            .bearer_auth(&self.api_key)
+            .json(&json!({
+                "model": "embedding-2",
+                "input": text,
+            }))
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<serde_json::Value>()
+            .await?;
+
+        let embedding = response["data"][0]["embedding"]
+            .as_array()
+            .ok_or_else(|| anyhow::anyhow!("Invalid response format: missing embedding"))?
+            .iter()
+            .map(|v| {
+                v.as_f64()
+                    .map(|x| x as f32)
+                    .ok_or_else(|| anyhow::anyhow!("Invalid embedding value"))
+            })
+            .collect::<Result<Vec<f32>, _>>()?;
+
+        Ok(embedding)
+    }
 }

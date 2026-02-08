@@ -23,10 +23,63 @@ pub struct MemoryConfig {
     pub enabled: bool,
     #[serde(default = "default_user_scope")]
     pub default_user_scope: String,
+    #[serde(default = "default_retrieval_config")]
+    pub retrieval: RetrievalConfig,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct RetrievalConfig {
+    #[serde(default = "default_categories_enabled")]
+    pub categories_enabled: bool,
+    #[serde(default = "default_categories_top_k")]
+    pub categories_top_k: usize,
+    #[serde(default = "default_items_top_k")]
+    pub items_top_k: usize,
+    #[serde(default = "default_resources_enabled")]
+    pub resources_enabled: bool,
+    #[serde(default = "default_resources_top_k")]
+    pub resources_top_k: usize,
+    #[serde(default = "default_context_target_length")]
+    pub context_target_length: usize,
 }
 
 fn default_database_url() -> String {
     "mysql://username:password@localhost:3306/nanors".to_string()
+}
+
+const fn default_categories_enabled() -> bool {
+    true
+}
+
+const fn default_categories_top_k() -> usize {
+    3
+}
+
+const fn default_items_top_k() -> usize {
+    5
+}
+
+const fn default_resources_enabled() -> bool {
+    true
+}
+
+const fn default_resources_top_k() -> usize {
+    2
+}
+
+const fn default_context_target_length() -> usize {
+    2000
+}
+
+const fn default_retrieval_config() -> RetrievalConfig {
+    RetrievalConfig {
+        categories_enabled: default_categories_enabled(),
+        categories_top_k: default_categories_top_k(),
+        items_top_k: default_items_top_k(),
+        resources_enabled: default_resources_enabled(),
+        resources_top_k: default_resources_top_k(),
+        context_target_length: default_context_target_length(),
+    }
 }
 
 fn default_database_config() -> DatabaseConfig {
@@ -47,6 +100,7 @@ fn default_memory_config() -> MemoryConfig {
     MemoryConfig {
         enabled: default_memory_enabled(),
         default_user_scope: default_user_scope(),
+        retrieval: default_retrieval_config(),
     }
 }
 
@@ -133,6 +187,14 @@ impl Config {
             memory: MemoryConfig {
                 enabled: false,
                 default_user_scope: "default".to_string(),
+                retrieval: RetrievalConfig {
+                    categories_enabled: true,
+                    categories_top_k: 3,
+                    items_top_k: 5,
+                    resources_enabled: true,
+                    resources_top_k: 2,
+                    context_target_length: 2000,
+                },
             },
         };
 
