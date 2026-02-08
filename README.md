@@ -9,7 +9,7 @@ nanobot 的 Rust 重写实现，采用渐进式开发策略和 workspace 架构�
 - **app**: CLI 入口
 - **nanors_core**: 核心抽象（agent, tools, 配置）
 - **nanors_providers**: LLM Provider 实现（智谱 GLM）
-- **nanors_session**: 会话管理（SQLite）
+- **nanors_session**: 会话管理（Sea-ORM + SQLite）
 - **nanors_config**: 配置管理
 
 ```
@@ -26,6 +26,7 @@ nanors/
 │   └── src/
 ├── nanors_session/        # SQLite 会话管理
 │   └── src/
+│       └── entity/       # Sea-ORM entity
 └── nanors_config/        # 配置管理
     └── src/
 ```
@@ -38,12 +39,29 @@ nanors/
 |------|------|------|
 | tokio | 1.49.0 | 异步运行时 |
 | serde | 1.0.228 | 序列化/反序列化 |
-| sqlx | 0.8 | 数据库（SQLite） |
+| sea-orm | 2.0.0-rc.30 | ORM 框架 |
+| sqlx | 0.8 | 数据库驱动（PostgreSQL, MySQL, SQLite） |
 | async-trait | 0.1.89 | 异步 trait |
 | anyhow | 1.0.100 | 错误处理 |
 | tracing | 0.1.44 | 结构化日志 |
 | reqwest | 0.12 | HTTP 客户端 |
 | clap | 4.5 | CLI 解析 |
+
+### Sea-ORM 配置
+
+```toml
+sea-orm = { version = "2.0.0-rc.30", features = [
+  "sqlx-postgres",
+  "sqlx-mysql",
+  "sqlx-sqlite",
+  "runtime-tokio-rustls",
+  "with-chrono",
+  "debug-print",
+  "macros",
+  "with-uuid",
+  "with-json",
+] }
+```
 
 ## 快速开始
 
@@ -109,7 +127,7 @@ cargo run -- agent -m "你好" --model glm-4-plus
 
 **选项：**
 - `-m, --message <MESSAGE>`: 发送单次消息
-- `M, --model <MODEL>`: 指定使用的模型
+- `-M, --model <MODEL>`: 指定使用的模型
 
 **示例：**
 
@@ -164,14 +182,20 @@ cargo build --release
 
 该脚本会设置编译优化选项并运行 clippy。
 
+**编译选项：**
+```bash
+export RUSTFLAGS="-Z function-sections=yes -C link-arg=-fuse-ld=/usr/bin/mold -C link-args=-Wl,--gc-sections,--as-needed"
+```
+
 ## 第一阶段功能
 
 - ✅ CLI 工具
 - ✅ 智谱 GLM 集成
-- ✅ SQLite 会话持久化
+- ✅ SQLite 会话持久化（Sea-ORM）
 - ✅ 基础工具框架
 - ✅ Workspace 架构（5 个 crate）
 - ✅ 完整的 clippy 检查（pedantic、nursery 等）
+- ✅ 生产级技术栈（与 pmi-rust-backend 一致）
 
 ## 代码规范
 
@@ -201,6 +225,16 @@ cargo build --release
 | 启动时间 | ~500ms | ~50ms | 10x |
 | 内存占用 | ~150MB | ~30MB | 5x |
 | 二进制大小 | N/A | ~5MB | - |
+
+## 数据库支持
+
+通过 Sea-ORM 支持多种数据库：
+
+- PostgreSQL
+- MySQL
+- SQLite
+
+默认使用 SQLite，可根据需要切换到 PostgreSQL 或 MySQL。
 
 ## 许可证
 
