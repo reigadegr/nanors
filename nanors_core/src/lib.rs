@@ -14,7 +14,10 @@
     clippy::similar_names,
     clippy::missing_safety_doc,
     clippy::missing_panics_doc,
-    clippy::missing_errors_doc
+    clippy::missing_errors_doc,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::suboptimal_flops
 )]
 
 use async_trait::async_trait;

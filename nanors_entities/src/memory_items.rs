@@ -25,12 +25,22 @@ pub struct Model {
     pub reinforcement_count: i32,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
+    pub version: i32,
+    pub parent_version_id: Option<Uuid>,
+    pub version_relation: Option<String>,
+    pub fact_type: Option<String>,
+    pub is_active: bool,
+    pub parent_id: Option<Uuid>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(has_many = "super::category_items::Entity")]
     CategoryItems,
+    #[sea_orm(has_many = "super::memory_cards::Entity")]
+    MemoryCards,
+    #[sea_orm(has_many = "super::memory_item_versions::Entity")]
+    MemoryItemVersions,
     #[sea_orm(
         belongs_to = "super::resources::Entity",
         from = "Column::ResourceId",
@@ -44,6 +54,18 @@ pub enum Relation {
 impl Related<super::category_items::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::CategoryItems.def()
+    }
+}
+
+impl Related<super::memory_cards::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::MemoryCards.def()
+    }
+}
+
+impl Related<super::memory_item_versions::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::MemoryItemVersions.def()
     }
 }
 

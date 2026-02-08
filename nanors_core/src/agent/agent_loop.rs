@@ -5,10 +5,11 @@ use std::sync::{Arc, atomic::AtomicBool};
 use tracing::{debug, info};
 use uuid::Uuid;
 
+use crate::memory::KeywordLibrary;
 use crate::{
     ChatMessage, LLMProvider, MemoryCategoryRepo, MemoryItem, MemoryItemRepo, MemoryType,
     ResourceRepo, Role, SessionStorage,
-    retrieval::{CategoryCompressor, SufficiencyChecker},
+    retrieval::{AdaptiveConfig, CategoryCompressor, SufficiencyChecker, find_adaptive_cutoff},
 };
 
 /// Tiered retrieval configuration based on memU's approach
@@ -33,6 +34,18 @@ pub struct RetrievalConfig {
     /// Target length for category summaries in tokens
     #[serde(default = "RetrievalConfig::default_category_summary_target_length")]
     pub category_summary_target_length: usize,
+    /// Adaptive retrieval configuration for memory items
+    #[serde(default)]
+    pub adaptive_items: AdaptiveConfig,
+    /// Adaptive retrieval configuration for categories
+    #[serde(default)]
+    pub adaptive_categories: AdaptiveConfig,
+    /// Adaptive retrieval configuration for resources
+    #[serde(default)]
+    pub adaptive_resources: AdaptiveConfig,
+    /// Semantic similarity threshold (0.0-1.0) for memory versioning
+    #[serde(default = "RetrievalConfig::default_semantic_similarity_threshold")]
+    pub semantic_similarity_threshold: f64,
 }
 
 impl Default for RetrievalConfig {
@@ -47,6 +60,10 @@ impl Default for RetrievalConfig {
             sufficiency_check_enabled: false,
             enable_category_compression: false,
             category_summary_target_length: Self::default_category_summary_target_length(),
+            adaptive_items: AdaptiveConfig::default(),
+            adaptive_categories: AdaptiveConfig::default(),
+            adaptive_resources: AdaptiveConfig::default(),
+            semantic_similarity_threshold: Self::default_semantic_similarity_threshold(),
         }
     }
 }
@@ -54,6 +71,10 @@ impl Default for RetrievalConfig {
 impl RetrievalConfig {
     const fn default_category_summary_target_length() -> usize {
         400
+    }
+
+    const fn default_semantic_similarity_threshold() -> f64 {
+        0.75
     }
 }
 
@@ -73,6 +94,7 @@ where
     retrieval_config: RetrievalConfig,
     sufficiency_checker: Option<Arc<dyn SufficiencyChecker>>,
     category_compressor: Option<Arc<dyn CategoryCompressor>>,
+    keyword_library: KeywordLibrary,
 }
 
 #[derive(Debug, Clone)]
@@ -110,6 +132,7 @@ where
             retrieval_config: RetrievalConfig::default(),
             sufficiency_checker: None,
             category_compressor: None,
+            keyword_library: KeywordLibrary::new(),
         }
     }
 
@@ -253,15 +276,34 @@ where
             return;
         };
 
-        let Ok(categories) = category_manager
-            .search_by_embedding(
-                &self.user_scope,
-                query_embedding,
-                self.retrieval_config.categories_top_k,
-            )
+        let adaptive_config = &self.retrieval_config.adaptive_categories;
+
+        // Use adaptive retrieval: fetch more results and dynamically determine cutoff
+        let over_retrieve_k = if adaptive_config.enabled {
+            adaptive_config.max_results
+        } else {
+            self.retrieval_config.categories_top_k
+        };
+
+        let Ok(all_categories) = category_manager
+            .search_by_embedding(&self.user_scope, query_embedding, over_retrieve_k)
             .await
         else {
             return;
+        };
+
+        // Apply adaptive cutoff if enabled
+        let categories = if adaptive_config.enabled && !all_categories.is_empty() {
+            let scores: Vec<f64> = all_categories.iter().map(|s| s.score).collect();
+            let cutoff = find_adaptive_cutoff(&scores, adaptive_config);
+            info!(
+                "Adaptive retrieval (categories): {} -> {} items",
+                all_categories.len(),
+                cutoff
+            );
+            all_categories.into_iter().take(cutoff).collect::<Vec<_>>()
+        } else {
+            all_categories
         };
 
         info!("Tier 1: Retrieved {} categories", categories.len());
@@ -283,6 +325,7 @@ where
     /// Retrieve and format tier 2 memory items
     async fn retrieve_items_tier(
         &self,
+        query: &str,
         query_embedding: &[f32],
         context_parts: &mut Vec<String>,
         total_length: &mut usize,
@@ -291,15 +334,57 @@ where
             return;
         };
 
-        let Ok(items) = memory_manager
-            .search_by_embedding(
-                &self.user_scope,
-                query_embedding,
-                self.retrieval_config.items_top_k,
-            )
+        // First, try keyword-based fact lookup
+        if let Some(fact_type) = self.keyword_library.match_fact_type(query) {
+            let fact_type_str = fact_type.as_str();
+            info!("Query matched fact_type: {}", fact_type_str);
+
+            if let Ok(Some(fact_memory)) = memory_manager
+                .find_active_by_fact_type(&self.user_scope, fact_type_str)
+                .await
+            {
+                info!("Found active fact memory: {}", fact_memory.id);
+                let text = format!("- {}", fact_memory.summary);
+                *total_length = Self::add_context_part(
+                    context_parts,
+                    text,
+                    *total_length,
+                    self.retrieval_config.context_target_length,
+                );
+                return;
+            }
+            info!("No active memory found for fact_type: {}", fact_type_str);
+        }
+
+        // Fall back to semantic search
+        let adaptive_config = &self.retrieval_config.adaptive_items;
+
+        // Use adaptive retrieval: fetch more results and dynamically determine cutoff
+        let over_retrieve_k = if adaptive_config.enabled {
+            adaptive_config.max_results
+        } else {
+            self.retrieval_config.items_top_k
+        };
+
+        let Ok(all_items) = memory_manager
+            .search_by_embedding(&self.user_scope, query_embedding, over_retrieve_k)
             .await
         else {
             return;
+        };
+
+        // Apply adaptive cutoff if enabled
+        let items = if adaptive_config.enabled && !all_items.is_empty() {
+            let scores: Vec<f64> = all_items.iter().map(|s| s.score).collect();
+            let cutoff = find_adaptive_cutoff(&scores, adaptive_config);
+            info!(
+                "Adaptive retrieval (items): {} -> {} items",
+                all_items.len(),
+                cutoff
+            );
+            all_items.into_iter().take(cutoff).collect::<Vec<_>>()
+        } else {
+            all_items
         };
 
         info!("Tier 2: Retrieved {} items", items.len());
@@ -328,15 +413,34 @@ where
             return;
         };
 
-        let Ok(resources) = resource_manager
-            .search_by_embedding(
-                &self.user_scope,
-                query_embedding,
-                self.retrieval_config.resources_top_k,
-            )
+        let adaptive_config = &self.retrieval_config.adaptive_resources;
+
+        // Use adaptive retrieval: fetch more results and dynamically determine cutoff
+        let over_retrieve_k = if adaptive_config.enabled {
+            adaptive_config.max_results
+        } else {
+            self.retrieval_config.resources_top_k
+        };
+
+        let Ok(all_resources) = resource_manager
+            .search_by_embedding(&self.user_scope, query_embedding, over_retrieve_k)
             .await
         else {
             return;
+        };
+
+        // Apply adaptive cutoff if enabled
+        let resources = if adaptive_config.enabled && !all_resources.is_empty() {
+            let scores: Vec<f64> = all_resources.iter().map(|s| s.score).collect();
+            let cutoff = find_adaptive_cutoff(&scores, adaptive_config);
+            info!(
+                "Adaptive retrieval (resources): {} -> {} items",
+                all_resources.len(),
+                cutoff
+            );
+            all_resources.into_iter().take(cutoff).collect::<Vec<_>>()
+        } else {
+            all_resources
         };
 
         info!("Tier 3: Retrieved {} resources", resources.len());
@@ -408,8 +512,13 @@ where
         }
 
         // Tier 2: Items (only if needed)
-        self.retrieve_items_tier(&query_embedding, &mut context_parts, &mut total_length)
-            .await;
+        self.retrieve_items_tier(
+            query,
+            &query_embedding,
+            &mut context_parts,
+            &mut total_length,
+        )
+        .await;
 
         // Sufficiency check after Tier 2
         if self.retrieval_config.sufficiency_check_enabled {
@@ -504,10 +613,21 @@ where
                 reinforcement_count: 0,
                 created_at: now,
                 updated_at: now,
+                version: 1,
+                parent_version_id: None,
+                version_relation: None,
+                fact_type: None,
+                is_active: true,
+                parent_id: None,
             };
 
-            if let Err(e) = memory.insert(&user_memory).await {
-                debug!("Failed to store user memory: {e}");
+            match memory.keyword_versioned_insert(&user_memory).await {
+                Ok(id) => {
+                    debug!("Stored user memory with keyword versioning: {id}");
+                }
+                Err(e) => {
+                    debug!("Failed to store user memory: {e}");
+                }
             }
 
             let response_summary = format!("Assistant: {}", response.content);
@@ -527,13 +647,24 @@ where
                 reinforcement_count: 0,
                 created_at: now,
                 updated_at: now,
+                version: 1,
+                parent_version_id: None,
+                version_relation: None,
+                fact_type: None,
+                is_active: true,
+                parent_id: None,
             };
 
-            if let Err(e) = memory.insert(&assistant_memory).await {
-                debug!("Failed to store assistant memory: {e}");
+            match memory.keyword_versioned_insert(&assistant_memory).await {
+                Ok(id) => {
+                    debug!("Stored assistant memory with keyword versioning: {id}");
+                }
+                Err(e) => {
+                    debug!("Failed to store assistant memory: {e}");
+                }
             }
 
-            debug!("Stored interaction as memories with embeddings");
+            debug!("Stored interaction as memories with keyword versioning");
 
             // Trigger category compression if enabled
             if self.retrieval_config.enable_category_compression {
