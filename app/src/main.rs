@@ -53,8 +53,8 @@ fn mask_database_url(url: &str) -> String {
 }
 
 #[derive(Parser)]
-#[command(name = "nanobot")]
-#[command(about = "nanobot AI assistant", long_about = None)]
+#[command(name = "nanors")]
+#[command(about = "nanors AI assistant", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -119,12 +119,12 @@ async fn main() -> anyhow::Result<()> {
             Config::create_config()?;
         }
         Commands::Version => {
-            println!("nanobot {}", env!("CARGO_PKG_VERSION"));
+            println!("nanors {}", env!("CARGO_PKG_VERSION"));
         }
         Commands::Info => {
             let config = Config::load()?;
 
-            println!("=== nanobot Configuration ===\n");
+            println!("=== nanors Configuration ===\n");
 
             println!("API Key:");
             let api_key = &config.providers.zhipu.api_key;

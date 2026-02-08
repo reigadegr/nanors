@@ -22,5 +22,5 @@ dirs.workspace = true
 uuid.workspace = true
 
 [[bin]]
-name = "nanobot"
+name = "nanors"
 path = "src/main.rs"

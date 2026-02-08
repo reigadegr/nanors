@@ -57,7 +57,7 @@ impl Config {
 
         if !config_path.exists() {
             anyhow::bail!(
-                "Config file not found at: {}. Please run 'nanobot init' to create config.",
+                "Config file not found at: {}. Please run 'nanors init' to create config.",
                 config_path.display()
             );
         }

@@ -47,7 +47,7 @@ where
     }
 
     pub async fn run_interactive(&self) -> anyhow::Result<()> {
-        println!("nanobot agent started. Type 'exit' to quit.\n");
+        println!("nanors agent started. Type 'exit' to quit.\n");
 
         while self.running.load(std::sync::atomic::Ordering::Relaxed) {
             print!("> ");

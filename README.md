@@ -1,6 +1,6 @@
-# nanors - nanobot Rust Implementation
+# nanors - AI Assistant Rust Implementation
 
-nanobot 的 Rust 重写实现，采用渐进式开发策略和 workspace 架构。
+nanors 的 Rust 实现，采用渐进式开发策略和 workspace 架构。
 
 ## 架构
 
@@ -79,10 +79,10 @@ sea-orm = { version = "2.0.0-rc.30", features = [
 ### 1. 初始化配置
 
 ```bash
-nanobot init
+nanors init
 ```
 
-这将直接创建 `~/.nanobot/config.json` 配置文件。
+这将直接创建 `~/nanors/config.json` 配置文件。
 
 ### 2. 编辑配置
 
@@ -114,24 +114,24 @@ nanobot init
 交互式对话：
 
 ```bash
-nanobot agent
+nanors agent
 ```
 
 单次查询：
 
 ```bash
-nanobot agent -m "你好"
+nanors agent -m "你好"
 ```
 
 指定模型：
 
 ```bash
-nanobot agent -m "你好" --model glm-4.7
+nanors agent -m "你好" --model glm-4.7
 ```
 
 ## 命令说明
 
-### `nanobot agent`
+### `nanors agent`
 
 运行 AI 助手。
 
@@ -143,32 +143,32 @@ nanobot agent -m "你好" --model glm-4.7
 
 ```bash
 # 交互式对话
-nanobot agent
+nanors agent
 
 # 单次查询
-nanobot agent -m "今天天气怎么样？"
+nanors agent -m "今天天气怎么样？"
 
 # 指定模型
-nanobot agent -m "你好" -M glm-4.7
+nanors agent -m "你好" -M glm-4.7
 ```
 
-### `nanobot init`
+### `nanors init`
 
 初始化配置文件。
 
 ```bash
-nanobot init
+nanors init
 ```
 
 - 如果配置文件已存在，会提示用户直接编辑
 - 如果配置文件不存在，会创建新的配置文件
 
-### `nanobot version`
+### `nanors version`
 
 显示版本信息。
 
 ```bash
-nanobot version
+nanors version
 ```
 
 ## 开发
@@ -183,7 +183,7 @@ cargo build
 cargo build --release
 ```
 
-二进制文件位于 `target/release/nanobot`。
+二进制文件位于 `target/release/nanors`。
 
 ### 代码检查
 
@@ -221,7 +221,7 @@ export RUSTFLAGS="-Z function-sections=yes -C link-arg=-fuse-ld=/usr/bin/mold -C
 - ✅ Workspace 架构（5 个 crate）
 - ✅ 完整的 clippy 检查（pedantic、nursery 等）
 - ✅ 生产级技术栈（与 pmi-rust-backend 一致）
-- ✅ 所有配置和数据统一在 `~/.nanobot` 目录
+- ✅ 所有配置和数据统一在 `~/nanors` 目录
 
 ## 代码规范
 
