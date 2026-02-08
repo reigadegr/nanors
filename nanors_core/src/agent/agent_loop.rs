@@ -4,7 +4,9 @@ use std::sync::{Arc, atomic::AtomicBool};
 use tracing::{debug, info};
 use uuid::Uuid;
 
-use crate::{ChatMessage, LLMProvider, MemoryItemRepo, MemoryType, Role, SessionStorage};
+use crate::{
+    ChatMessage, LLMProvider, MemoryItem, MemoryItemRepo, MemoryType, Role, SessionStorage,
+};
 
 pub struct AgentLoop<P = Arc<dyn LLMProvider>, S = Arc<dyn SessionStorage>>
 where
@@ -100,78 +102,20 @@ where
     ) -> anyhow::Result<String> {
         info!("Processing message from session: {}", session_id);
 
-        // Build system prompt with memory context
-        let system_prompt = if let Some(memory) = &self.memory_manager {
-            info!(
-                "Memory manager available, user_scope: '{}'",
-                self.user_scope
-            );
-            debug!("Searching for relevant memories");
+        let system_prompt = self.build_system_prompt().await;
 
-            // Get recent memories and build context
-            match memory.list_by_scope(&self.user_scope).await {
-                Ok(memories) => {
-                    eprintln!("[DEBUG] Found {} memories in database", memories.len());
-                    if !memories.is_empty() {
-                        // Take most recent memories (in reverse, newest first)
-                        let user_memories: Vec<_> = memories
-                            .iter()
-                            .rev()
-                            .take(10) // Limit to top 10 most recent memories
-                            .filter(|m| {
-                                let starts_with_user = m.summary.starts_with("User:");
-                                if !starts_with_user {
-                                    debug!(
-                                        "Skipping non-user memory: {}",
-                                        m.summary.chars().take(20).collect::<String>()
-                                    );
-                                }
-                                starts_with_user
-                            })
-                            .collect();
+        let messages = vec![
+            ChatMessage {
+                role: Role::System,
+                content: system_prompt,
+            },
+            ChatMessage {
+                role: Role::User,
+                content: content.to_string(),
+            },
+        ];
 
-                        info!("Filtered to {} user memories", user_memories.len());
-
-                        if !user_memories.is_empty() {
-                            let memory_context: String = user_memories
-                                .iter()
-                                .map(|m| format!("- {}", m.summary))
-                                .collect::<Vec<_>>()
-                                .join("\n");
-
-                            format!(
-                                "You are a helpful AI assistant with memory of past conversations.\n\nHere are relevant memories from previous conversations:\n{memory_context}\n\nUse this context to provide better, more personalized responses."
-                            )
-                        } else {
-                            "You are a helpful AI assistant.".to_string()
-                        }
-                    } else {
-                        "You are a helpful AI assistant.".to_string()
-                    }
-                }
-                Err(e) => {
-                    info!("Failed to retrieve memories: {}", e);
-                    "You are a helpful AI assistant.".to_string()
-                }
-            }
-        } else {
-            info!("No memory manager available");
-            "You are a helpful AI assistant.".to_string()
-        };
-
-        let mut messages = Vec::new();
-        messages.push(ChatMessage {
-            role: Role::System,
-            content: system_prompt,
-        });
-
-        // Add user message
-        messages.push(ChatMessage {
-            role: Role::User,
-            content: content.to_string(),
-        });
-
-        // Debug: log the messages being sent
+        // Log messages being sent to the LLM
         for (i, msg) in messages.iter().enumerate() {
             info!(
                 "Message {}: role={:?}, content_len={}",
@@ -186,25 +130,99 @@ where
 
         let response = self.provider.chat(&messages, &self.config.model).await?;
 
+        self.save_to_session(session_id, content, &response).await?;
+        self.save_to_memory(content, &response).await;
+
+        Ok(response.content)
+    }
+
+    /// Build the system prompt with memory context
+    async fn build_system_prompt(&self) -> String {
+        if let Some(memory) = &self.memory_manager {
+            info!(
+                "Memory manager available, user_scope: '{}'",
+                self.user_scope
+            );
+            debug!("Searching for relevant memories");
+
+            match memory.list_by_scope(&self.user_scope).await {
+                Ok(memories) => {
+                    eprintln!("[DEBUG] Found {} memories in database", memories.len());
+                    if memories.is_empty() {
+                        return "You are a helpful AI assistant.".to_string();
+                    }
+
+                    let user_memories: Vec<_> = memories
+                        .iter()
+                        .rev()
+                        .take(10)
+                        .filter(|m| {
+                            let starts_with_user = m.summary.starts_with("User:");
+                            if !starts_with_user {
+                                debug!(
+                                    "Skipping non-user memory: {}",
+                                    m.summary.chars().take(20).collect::<String>()
+                                );
+                            }
+                            starts_with_user
+                        })
+                        .collect();
+
+                    info!("Filtered to {} user memories", user_memories.len());
+
+                    if user_memories.is_empty() {
+                        return "You are a helpful AI assistant.".to_string();
+                    }
+
+                    let memory_context: String = user_memories
+                        .iter()
+                        .map(|m| format!("- {}", m.summary))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+
+                    format!(
+                        "You are a helpful AI assistant with memory of past conversations.\n\nHere are relevant memories from previous conversations:\n{memory_context}\n\nUse this context to provide better, more personalized responses."
+                    )
+                }
+                Err(e) => {
+                    info!("Failed to retrieve memories: {}", e);
+                    "You are a helpful AI assistant.".to_string()
+                }
+            }
+        } else {
+            info!("No memory manager available");
+            "You are a helpful AI assistant.".to_string()
+        }
+    }
+
+    /// Save messages to session storage
+    async fn save_to_session(
+        &self,
+        session_id: &Uuid,
+        content: &str,
+        response: &crate::LLMResponse,
+    ) -> anyhow::Result<()> {
         self.session_manager
             .add_message(session_id, Role::User, content)
             .await?;
         self.session_manager
             .add_message(session_id, Role::Assistant, &response.content)
             .await?;
+        Ok(())
+    }
 
-        // Store the interaction as a memory if memory manager is available
+    /// Save interaction to memory storage
+    async fn save_to_memory(&self, content: &str, response: &crate::LLMResponse) {
         if let Some(memory) = &self.memory_manager {
             let now = chrono::Utc::now();
 
-            // Store user message as episodic memory
-            let user_memory = crate::MemoryItem {
+            let user_memory = MemoryItem {
                 id: Uuid::now_v7(),
                 user_scope: self.user_scope.clone(),
                 resource_id: None,
                 memory_type: MemoryType::Episodic,
                 summary: format!("User: {content}"),
-                embedding: None, // Would be populated by embedding service
+                embedding: None,
                 happened_at: now,
                 extra: None,
                 content_hash: format!("{:x}", sha2::Sha256::digest(format!("episodic:{content}"))),
@@ -217,9 +235,8 @@ where
                 debug!("Failed to store user memory: {e}");
             }
 
-            // Store assistant response as episodic memory
             let response_summary = format!("Assistant: {}", response.content);
-            let assistant_memory = crate::MemoryItem {
+            let assistant_memory = MemoryItem {
                 id: Uuid::now_v7(),
                 user_scope: self.user_scope.clone(),
                 resource_id: None,
@@ -243,8 +260,6 @@ where
 
             debug!("Stored interaction as memories");
         }
-
-        Ok(response.content)
     }
 
     pub fn stop(&self) {
