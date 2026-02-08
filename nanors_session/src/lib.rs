@@ -17,6 +17,7 @@
     clippy::missing_errors_doc
 )]
 
+pub mod entity;
 mod manager;
 
 pub use manager::SessionManager;

@@ -38,6 +38,17 @@ tracing-subscriber = { version = "0.3.22", features = [
   "env-filter",
 ] }
 async-trait = "0.1.89"
+sea-orm = { version = "2.0.0-rc.30", features = [
+  "sqlx-postgres",
+  "sqlx-mysql",
+  "sqlx-sqlite",
+  "runtime-tokio-rustls",
+  "with-chrono",
+  "debug-print",
+  "macros",
+  "with-uuid",
+  "with-json",
+] }
 reqwest = { version = "0.12", features = ["json"] }
 clap = { version = "4.5", features = ["derive"] }
 dirs = "5.0"

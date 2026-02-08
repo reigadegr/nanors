@@ -19,37 +19,30 @@
 
 use async_trait::async_trait;
 use nanors_core::{ChatMessage, Role, Session as CoreSession, SessionStorage};
-use sqlx::{SqlitePool, Row};
+use sea_orm::{ActiveModelTrait, Database, DatabaseConnection, DbErr, EntityTrait, Set};
 use tracing::info;
+use std::path::PathBuf;
+
+use crate::entity::sessions;
 
 pub struct SessionManager {
-    pool: SqlitePool,
+    db: DatabaseConnection,
 }
 
 impl SessionManager {
-    pub async fn new(db_path: std::path::PathBuf) -> anyhow::Result<Self> {
-        let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
+    pub async fn new(db_path: PathBuf) -> anyhow::Result<Self> {
+        let db_url = format!("sqlite:{}", db_path.display());
         info!("Connecting to database: {}", db_url);
-        
-        let pool = SqlitePool::connect(&db_url).await?;
-        
-        sqlx::query(
-            "CREATE TABLE IF NOT EXISTS sessions (
-                key TEXT PRIMARY KEY,
-                messages TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )",
-        ).execute(&pool).await?;
+
+        let db = Database::connect(&db_url).await?;
 
         info!("SessionManager initialized");
-        Ok(Self { pool })
+        Ok(Self { db })
     }
 
     pub async fn clear_session(&self, key: &str) -> anyhow::Result<()> {
-        sqlx::query("DELETE FROM sessions WHERE key = ?")
-            .bind(key)
-            .execute(&self.pool)
+        sessions::Entity::delete_by_id(key.to_owned())
+            .exec(&self.db)
             .await?;
 
         info!("Cleared session: {}", key);
@@ -57,31 +50,29 @@ impl SessionManager {
     }
 
     pub async fn list_sessions(&self) -> anyhow::Result<Vec<String>> {
-        let rows = sqlx::query("SELECT key FROM sessions")
-            .fetch_all(&self.pool)
+        let session_models = sessions::Entity::find()
+            .all(&self.db)
             .await?;
 
-        Ok(rows.iter().map(|row| row.get("key")).collect())
+        Ok(session_models.into_iter().map(|s| s.key).collect())
     }
 }
 
 #[async_trait]
 impl SessionStorage for SessionManager {
     async fn get_or_create(&self, key: &str) -> anyhow::Result<CoreSession> {
-        let row = sqlx::query("SELECT * FROM sessions WHERE key = ?")
-            .bind(key)
-            .fetch_optional(&self.pool)
+        let session_model = sessions::Entity::find_by_id(key.to_owned())
+            .one(&self.db)
             .await?;
 
-        if let Some(row) = row {
-            let messages_json: String = row.get("messages");
-            let messages: Vec<ChatMessage> = serde_json::from_str(&messages_json)?;
+        if let Some(model) = session_model {
+            let messages: Vec<ChatMessage> = serde_json::from_str(&model.messages)?;
 
             Ok(CoreSession {
-                key: row.get("key"),
+                key: model.key,
                 messages,
-                created_at: row.get("created_at"),
-                updated_at: row.get("updated_at"),
+                created_at: model.created_at.and_utc(),
+                updated_at: model.updated_at.and_utc(),
             })
         } else {
             let now = chrono::Utc::now();
@@ -104,21 +95,37 @@ impl SessionStorage for SessionManager {
 
         let messages_json = serde_json::to_string(&session.messages)?;
 
-        sqlx::query(
-            "INSERT INTO sessions (key, messages, created_at, updated_at)
-             VALUES (?, ?, ?, ?)
-             ON CONFLICT(key) DO UPDATE SET
-             messages = excluded.messages,
-             updated_at = excluded.updated_at",
-        )
-        .bind(&session.key)
-        .bind(&messages_json)
-        .bind(session.created_at)
-        .bind(session.updated_at)
-        .execute(&self.pool)
-        .await?;
+        let now = session.updated_at.naive_utc();
+        let created_at = session.created_at.naive_utc();
 
-        info!("Added message to session: {}", key);
-        Ok(())
+        let result = sessions::Entity::update(sessions::ActiveModel {
+            key: Set(session.key.clone()),
+            messages: Set(messages_json.clone()),
+            created_at: Set(created_at),
+            updated_at: Set(now),
+        })
+        .exec(&self.db)
+        .await;
+
+        match result {
+            Ok(_) => {
+                info!("Added message to session: {}", key);
+                Ok(())
+            }
+            Err(DbErr::RecordNotFound(_)) => {
+                sessions::ActiveModel {
+                    key: Set(session.key),
+                    messages: Set(messages_json),
+                    created_at: Set(created_at),
+                    updated_at: Set(now),
+                }
+                .insert(&self.db)
+                .await?;
+
+                info!("Added message to session: {}", key);
+                Ok(())
+            }
+            Err(e) => Err(e.into()),
+        }
     }
 }
