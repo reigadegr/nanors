@@ -26,6 +26,32 @@ use tracing::{Level, info};
 use tracing_subscriber::FmtSubscriber;
 use uuid::Uuid;
 
+fn mask_database_url(url: &str) -> String {
+    url.find("://").map_or_else(
+        || url.to_string(),
+        |start| {
+            let scheme = &url[..start + 3];
+            let rest = &url[start + 3..];
+
+            rest.find('@').map_or_else(
+                || url.to_string(),
+                |at_pos| {
+                    let credentials = &rest[..at_pos];
+                    let after_at = &rest[at_pos..];
+
+                    credentials.find(':').map_or_else(
+                        || url.to_string(),
+                        |colon_pos| {
+                            let username = &credentials[..colon_pos];
+                            format!("{scheme}{username}:***{after_at}")
+                        },
+                    )
+                },
+            )
+        },
+    )
+}
+
 #[derive(Parser)]
 #[command(name = "nanobot")]
 #[command(about = "nanobot AI assistant", long_about = None)]
@@ -50,6 +76,8 @@ enum Commands {
     Init,
     /// Show version
     Version,
+    /// Show configuration information
+    Info,
 }
 
 #[tokio::main]
@@ -92,6 +120,42 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Version => {
             println!("nanobot {}", env!("CARGO_PKG_VERSION"));
+        }
+        Commands::Info => {
+            let config = Config::load()?;
+
+            println!("=== nanobot Configuration ===\n");
+
+            println!("API Key:");
+            let api_key = &config.providers.zhipu.api_key;
+            if api_key.len() > 8 {
+                let masked = format!("{}...{}", &api_key[..4], &api_key[api_key.len() - 4..]);
+                println!("  Zhipu: {masked}");
+            } else {
+                println!("  Zhipu: ***");
+            }
+            println!();
+
+            println!("Database:");
+            let db_url = &config.database.url;
+            println!("  URL: {}", mask_database_url(db_url));
+
+            info!("Testing database connection");
+            match SessionManager::new(db_url).await {
+                Ok(_) => {
+                    println!("  Status: ✅ Connected");
+                }
+                Err(e) => {
+                    println!("  Status: ❌ Connection failed");
+                    println!("  Error: {e}");
+                }
+            }
+            println!();
+
+            println!("Agent Defaults:");
+            println!("  Model: {}", config.agents.defaults.model);
+            println!("  Max Tokens: {}", config.agents.defaults.max_tokens);
+            println!("  Temperature: {}", config.agents.defaults.temperature);
         }
     }
 

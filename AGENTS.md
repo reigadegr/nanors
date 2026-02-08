@@ -29,7 +29,7 @@ cargo nextest run                     # 使用 nextest 运行测试（如果已�
 ## 工作流程要求
 
 ### 代码修改后必须执行
-1. **运行 `./debug.sh`** - 格式化 + clippy 检查
+1. **运行 `./debug.sh`** - 格式化 + clippy 检查（**唯一允许的构建/检查命令**）
 2. **简单功能测试** - 验证修改的基本功能正常
 3. **所有 clippy 警告必须修复** - 不得使用 `#[allow(...)]` 屏蔽警告
 4. **保持文件头部 linting 配置完整** - 不得修改或移除 `main.rs` 和 `lib.rs` 中的 `#![deny(...)]` 和 `#![allow(...)]` 配置
@@ -40,6 +40,8 @@ cargo nextest run                     # 使用 nextest 运行测试（如果已�
 - ❌ 移除或注释掉文件头部的 `#![deny(...)]` 或 `#![allow(...)]`
 - ❌ 跳过 `./debug.sh` 执行
 - ❌ 提交未通过 clippy 检查的代码
+- ❌ 使用 `cargo build` 检测代码能否编译（只允许使用 `./debug.sh`）
+- ❌ 以 release 模式编译（除非主动要求）
 
 ### 提交前检查清单
 - [ ] 执行 `./debug.sh` 无警告
