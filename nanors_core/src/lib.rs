@@ -22,9 +22,14 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub mod agent;
+pub mod memory;
 pub mod tools;
 
 pub use agent::{AgentConfig, AgentLoop};
+pub use memory::{
+    CategoryItem, CategoryItemRepo, MemoryCategory, MemoryCategoryRepo, MemoryItem, MemoryItemRepo,
+    MemoryType, Resource, ResourceRepo, SalienceScore,
+};
 pub use tools::{Tool, ToolRegistry};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

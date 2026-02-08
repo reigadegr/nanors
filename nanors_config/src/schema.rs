@@ -7,12 +7,22 @@ pub struct Config {
     pub providers: ProvidersConfig,
     #[serde(default = "default_database_config")]
     pub database: DatabaseConfig,
+    #[serde(default = "default_memory_config")]
+    pub memory: MemoryConfig,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct DatabaseConfig {
     #[serde(default = "default_database_url")]
     pub url: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct MemoryConfig {
+    #[serde(default = "default_memory_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_user_scope")]
+    pub default_user_scope: String,
 }
 
 fn default_database_url() -> String {
@@ -22,6 +32,21 @@ fn default_database_url() -> String {
 fn default_database_config() -> DatabaseConfig {
     DatabaseConfig {
         url: default_database_url(),
+    }
+}
+
+const fn default_memory_enabled() -> bool {
+    false
+}
+
+fn default_user_scope() -> String {
+    "default".to_string()
+}
+
+fn default_memory_config() -> MemoryConfig {
+    MemoryConfig {
+        enabled: default_memory_enabled(),
+        default_user_scope: default_user_scope(),
     }
 }
 
@@ -104,6 +129,10 @@ impl Config {
             },
             database: DatabaseConfig {
                 url: "mysql://username:password@localhost:3306/nanors".to_string(),
+            },
+            memory: MemoryConfig {
+                enabled: false,
+                default_user_scope: "default".to_string(),
             },
         };
 

@@ -2,4 +2,8 @@
 
 pub mod prelude;
 
+pub mod category_items;
+pub mod memory_categories;
+pub mod memory_items;
+pub mod resources;
 pub mod sessions;

@@ -17,10 +17,11 @@
     clippy::missing_errors_doc
 )]
 
-pub mod prelude;
+mod convert;
+mod dedup;
+mod manager;
+mod scoring;
 
-pub mod category_items;
-pub mod memory_categories;
-pub mod memory_items;
-pub mod resources;
-pub mod sessions;
+pub use dedup::content_hash;
+pub use manager::MemoryManager;
+pub use scoring::{compute_salience, cosine_similarity};

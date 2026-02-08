@@ -1,5 +1,5 @@
 [package]
-name = "nanors_core"
+name = "nanors_memory"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,13 +8,18 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+nanors_core.workspace = true
+nanors_entities.workspace = true
+
+sea-orm.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
-tokio.workspace = true
 anyhow.workspace = true
-thiserror.workspace = true
 tracing.workspace = true
 async-trait.workspace = true
 uuid.workspace = true
 sha2.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

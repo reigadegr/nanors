@@ -20,8 +20,10 @@
 use clap::{Parser, Subcommand};
 use nanors_config::Config;
 use nanors_core::{AgentConfig, AgentLoop};
+use nanors_memory::MemoryManager;
 use nanors_providers::ZhipuProvider;
 use nanors_session::SessionManager;
+use std::sync::Arc;
 use tracing::{Level, info};
 use tracing_subscriber::FmtSubscriber;
 use uuid::Uuid;
@@ -99,6 +101,7 @@ async fn main() -> anyhow::Result<()> {
 
             info!("Connecting to database");
             let session_manager = SessionManager::new(&config.database.url).await?;
+
             let agent_config = AgentConfig {
                 model: model.unwrap_or_else(|| config.agents.defaults.model.clone()),
                 max_tokens: config.agents.defaults.max_tokens,
@@ -106,6 +109,17 @@ async fn main() -> anyhow::Result<()> {
             };
 
             let agent = AgentLoop::new(provider, session_manager, agent_config);
+
+            // Add memory manager if enabled
+            let agent = if config.memory.enabled {
+                info!("Memory feature enabled, initializing MemoryManager");
+                let memory_manager = MemoryManager::new(&config.database.url).await?;
+                let user_scope = config.memory.default_user_scope.clone();
+                agent.with_memory(Arc::new(memory_manager), user_scope)
+            } else {
+                info!("Memory feature disabled");
+                agent
+            };
 
             if let Some(msg) = message {
                 let session_id = Uuid::now_v7();
@@ -156,6 +170,18 @@ async fn main() -> anyhow::Result<()> {
             println!("  Model: {}", config.agents.defaults.model);
             println!("  Max Tokens: {}", config.agents.defaults.max_tokens);
             println!("  Temperature: {}", config.agents.defaults.temperature);
+            println!();
+
+            println!("Memory:");
+            println!(
+                "  Enabled: {}",
+                if config.memory.enabled {
+                    "✅ Yes"
+                } else {
+                    "❌ No"
+                }
+            );
+            println!("  Default User Scope: {}", config.memory.default_user_scope);
         }
     }
 
