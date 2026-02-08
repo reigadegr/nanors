@@ -1,0 +1,27 @@
+# SeaORM CLI Configuration
+# Usage: sea-orm-cli generate entity --with-serde=both -o nanors_entities/src
+
+[database]
+# Database connection URL - update with your actual database credentials
+# Format: protocol://username:password@hostname:port/database
+url = "postgresql://username:password@localhost:5432/nanors"
+
+# Max connections for the connection pool
+max_connections = 10
+
+# Directory where migration files are stored
+migration_dir = "./migrations"
+
+# Generate configuration
+[generate]
+# Output directory for generated entity files
+output_dir = "nanors_entities/src"
+
+# Include serde derives (both Serialize and Deserialize)
+with_serde = "both"
+
+# Generate serde skip attributes for hidden columns
+serde_skip_hidden = false
+
+# Generate serde skip attributes for columns with default value
+serde_skip_default = false

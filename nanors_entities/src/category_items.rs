@@ -13,6 +13,35 @@ pub struct Model {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "super::memory_categories::Entity",
+        from = "Column::CategoryId",
+        to = "super::memory_categories::Column::Id",
+        on_update = "NoAction",
+        on_delete = "Cascade"
+    )]
+    MemoryCategories,
+    #[sea_orm(
+        belongs_to = "super::memory_items::Entity",
+        from = "Column::ItemId",
+        to = "super::memory_items::Column::Id",
+        on_update = "NoAction",
+        on_delete = "Cascade"
+    )]
+    MemoryItems,
+}
+
+impl Related<super::memory_categories::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::MemoryCategories.def()
+    }
+}
+
+impl Related<super::memory_items::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::MemoryItems.def()
+    }
+}
 
 impl ActiveModelBehavior for ActiveModel {}

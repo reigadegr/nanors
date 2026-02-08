@@ -8,9 +8,15 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
-    #[sea_orm(column_type = "String(StringLen::N(255))")]
+    #[sea_orm(
+        column_type = "String(StringLen::N(255))",
+        unique_key = "unique_category_name"
+    )]
     pub user_scope: String,
-    #[sea_orm(column_type = "String(StringLen::N(255))")]
+    #[sea_orm(
+        column_type = "String(StringLen::N(255))",
+        unique_key = "unique_category_name"
+    )]
     pub name: String,
     #[sea_orm(column_type = "Text", nullable)]
     pub description: Option<String>,
@@ -23,6 +29,28 @@ pub struct Model {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(has_many = "super::category_items::Entity")]
+    CategoryItems,
+}
+
+impl Related<super::category_items::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::CategoryItems.def()
+    }
+}
+
+impl Related<super::memory_items::Entity> for Entity {
+    fn to() -> RelationDef {
+        super::category_items::Relation::MemoryItems.def()
+    }
+    fn via() -> Option<RelationDef> {
+        Some(
+            super::category_items::Relation::MemoryCategories
+                .def()
+                .rev(),
+        )
+    }
+}
 
 impl ActiveModelBehavior for ActiveModel {}
