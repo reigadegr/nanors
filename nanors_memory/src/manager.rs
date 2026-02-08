@@ -6,6 +6,7 @@ use nanors_core::memory::{
 };
 use nanors_core::{CategoryItemRepo, MemoryCategoryRepo, MemoryItemRepo, ResourceRepo};
 use nanors_entities::{category_items, memory_categories, memory_items, resources};
+use rayon::prelude::*;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Database, DatabaseConnection, EntityTrait, ModelTrait,
     QueryFilter, Set,
@@ -162,7 +163,7 @@ impl MemoryItemRepo for MemoryManager {
         // Filter out items that are essentially the same as the query (similarity >= 0.95)
         // to avoid returning the exact same question back to the user
         let mut filtered_scores: Vec<SalienceScore<MemoryItem>> = items
-            .into_iter()
+            .into_par_iter()
             .map(|item| {
                 let salience = if let Some(embedding) = &item.embedding {
                     let similarity = scoring::cosine_similarity(query_embedding, embedding);
@@ -192,7 +193,8 @@ impl MemoryItemRepo for MemoryManager {
             })
             .collect();
 
-        filtered_scores.sort_by(|a, b| b.score.total_cmp(&a.score));
+        // Use parallel unstable sort for better performance (no extra allocation)
+        filtered_scores.par_sort_unstable_by(|a, b| b.score.total_cmp(&a.score));
         filtered_scores.truncate(top_k);
 
         Ok(filtered_scores)
@@ -323,7 +325,7 @@ impl MemoryCategoryRepo for MemoryManager {
             MemoryCategoryRepo::list_by_scope(self, user_scope).await?;
 
         let mut scores: Vec<CategorySalienceScore> = categories
-            .into_iter()
+            .into_par_iter()
             .map(|category| {
                 // Categories without embeddings get a low default score
                 let score = category.embedding.as_ref().map_or(0.0, |embedding| {
@@ -336,7 +338,8 @@ impl MemoryCategoryRepo for MemoryManager {
             })
             .collect();
 
-        scores.sort_by(|a, b| b.score.total_cmp(&a.score));
+        // Use parallel unstable sort for better performance (no extra allocation)
+        scores.par_sort_unstable_by(|a, b| b.score.total_cmp(&a.score));
         scores.truncate(top_k);
 
         Ok(scores)
@@ -449,7 +452,7 @@ impl ResourceRepo for MemoryManager {
         let resources: Vec<Resource> = ResourceRepo::list_by_scope(self, user_scope).await?;
 
         let mut scores: Vec<ResourceSalienceScore> = resources
-            .into_iter()
+            .into_par_iter()
             .map(|resource| {
                 // Resources without embeddings get a low default score
                 let score = resource.embedding.as_ref().map_or(0.0, |embedding| {
@@ -462,7 +465,8 @@ impl ResourceRepo for MemoryManager {
             })
             .collect();
 
-        scores.sort_by(|a, b| b.score.total_cmp(&a.score));
+        // Use parallel unstable sort for better performance (no extra allocation)
+        scores.par_sort_unstable_by(|a, b| b.score.total_cmp(&a.score));
         scores.truncate(top_k);
 
         Ok(scores)
