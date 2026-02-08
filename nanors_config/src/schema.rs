@@ -16,7 +16,7 @@ pub struct DatabaseConfig {
 }
 
 fn default_database_url() -> String {
-    "postgres://reigadegr:1234@127.0.0.1:5432/nanors".to_string()
+    "mysql://username:password@localhost:3306/nanors".to_string()
 }
 
 fn default_database_config() -> DatabaseConfig {
@@ -92,7 +92,7 @@ impl Config {
         let config = Self {
             agents: AgentsConfig {
                 defaults: AgentDefaults {
-                    model: "glm-4-flash".to_string(),
+                    model: "glm-4.7-flash".to_string(),
                     max_tokens: 8192,
                     temperature: 0.7,
                 },
@@ -103,7 +103,7 @@ impl Config {
                 },
             },
             database: DatabaseConfig {
-                url: "postgres://username:password@localhost:5432/nanors".to_string(),
+                url: "mysql://username:password@localhost:3306/nanors".to_string(),
             },
         };
 

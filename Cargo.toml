@@ -42,6 +42,7 @@ tracing-subscriber = { version = "0.3.22", features = [
 async-trait = "0.1.89"
 sea-orm = { version = "2.0.0-rc.30", features = [
   "sqlx-postgres",
+  "sqlx-mysql",
   "runtime-tokio-rustls",
   "with-chrono",
   "debug-print",
