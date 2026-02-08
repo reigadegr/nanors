@@ -154,20 +154,24 @@ impl MemoryItemRepo for MemoryManager {
 
         let mut scores: Vec<SalienceScore> = items
             .into_iter()
-            .filter_map(|item| {
-                let embedding = item.embedding.as_ref()?;
-                let similarity = scoring::cosine_similarity(query_embedding, embedding);
-                let salience = scoring::compute_salience(
-                    similarity,
-                    item.reinforcement_count,
-                    item.happened_at,
-                    now,
-                );
+            .map(|item| {
+                let salience = if let Some(embedding) = &item.embedding {
+                    let similarity = scoring::cosine_similarity(query_embedding, embedding);
+                    scoring::compute_salience(
+                        similarity,
+                        item.reinforcement_count,
+                        item.happened_at,
+                        now,
+                    )
+                } else {
+                    // Items without embeddings get a low default score based on recency only
+                    scoring::compute_salience(0.0, item.reinforcement_count, item.happened_at, now)
+                };
 
-                Some(SalienceScore {
+                SalienceScore {
                     item,
                     score: salience,
-                })
+                }
             })
             .collect();
 
@@ -175,6 +179,36 @@ impl MemoryItemRepo for MemoryManager {
         scores.truncate(top_k);
 
         Ok(scores)
+    }
+
+    async fn backfill_embeddings(
+        &self,
+        user_scope: &str,
+        embed_fn: &(dyn Fn(String) -> anyhow::Result<Vec<f32>> + Send + Sync),
+    ) -> anyhow::Result<usize> {
+        let items = MemoryItemRepo::list_by_scope(self, user_scope).await?;
+        let mut updated = 0_usize;
+
+        for mut item in items {
+            if item.embedding.is_none() {
+                // Generate embedding from the summary text
+                let summary = item.summary.clone();
+                match embed_fn(summary) {
+                    Ok(embedding) => {
+                        item.embedding = Some(embedding);
+                        item.updated_at = Utc::now();
+                        MemoryItemRepo::update(self, &item).await?;
+                        updated += 1;
+                        info!("Backfilled embedding for memory: {}", item.id);
+                    }
+                    Err(e) => {
+                        info!("Failed to generate embedding for {}: {e}", item.id);
+                    }
+                }
+            }
+        }
+
+        Ok(updated)
     }
 }
 
@@ -267,14 +301,12 @@ impl MemoryCategoryRepo for MemoryManager {
 
         let mut scores: Vec<CategorySalienceScore> = categories
             .into_iter()
-            .filter_map(|category| {
-                let embedding = category.embedding.as_ref()?;
-                let similarity = scoring::cosine_similarity(query_embedding, embedding);
-                // Categories don't have reinforcement counts, use similarity only
-                Some(CategorySalienceScore {
-                    category,
-                    score: similarity,
-                })
+            .map(|category| {
+                // Categories without embeddings get a low default score
+                let score = category.embedding.as_ref().map_or(0.0, |embedding| {
+                    scoring::cosine_similarity(query_embedding, embedding)
+                });
+                CategorySalienceScore { category, score }
             })
             .collect();
 
@@ -389,14 +421,12 @@ impl ResourceRepo for MemoryManager {
 
         let mut scores: Vec<ResourceSalienceScore> = resources
             .into_iter()
-            .filter_map(|resource| {
-                let embedding = resource.embedding.as_ref()?;
-                let similarity = scoring::cosine_similarity(query_embedding, embedding);
-                // Resources don't have reinforcement counts, use similarity only
-                Some(ResourceSalienceScore {
-                    resource,
-                    score: similarity,
-                })
+            .map(|resource| {
+                // Resources without embeddings get a low default score
+                let score = resource.embedding.as_ref().map_or(0.0, |embedding| {
+                    scoring::cosine_similarity(query_embedding, embedding)
+                });
+                ResourceSalienceScore { resource, score }
             })
             .collect();
 

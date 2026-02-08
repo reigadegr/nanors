@@ -27,6 +27,14 @@ pub trait MemoryItemRepo: Send + Sync {
         query_embedding: &[f32],
         top_k: usize,
     ) -> anyhow::Result<Vec<SalienceScore>>;
+
+    /// Backfill embeddings for items that don't have them.
+    /// Returns the number of items updated.
+    async fn backfill_embeddings(
+        &self,
+        user_scope: &str,
+        embed_fn: &(dyn Fn(String) -> anyhow::Result<Vec<f32>> + Send + Sync),
+    ) -> anyhow::Result<usize>;
 }
 
 #[derive(Debug, Clone)]
