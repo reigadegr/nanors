@@ -70,8 +70,7 @@ async fn main() -> anyhow::Result<()> {
             let provider = ZhipuProvider::new(config.providers.zhipu.api_key);
 
             info!("Connecting to database");
-            let session_manager =
-                SessionManager::new("postgres://reigadegr:1234@127.0.0.1:5432/nanors").await?;
+            let session_manager = SessionManager::new(&config.database.url).await?;
             let agent_config = AgentConfig {
                 model: model.unwrap_or_else(|| config.agents.defaults.model.clone()),
                 max_tokens: config.agents.defaults.max_tokens,

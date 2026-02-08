@@ -5,6 +5,24 @@ use std::path::PathBuf;
 pub struct Config {
     pub agents: AgentsConfig,
     pub providers: ProvidersConfig,
+    #[serde(default = "default_database_config")]
+    pub database: DatabaseConfig,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct DatabaseConfig {
+    #[serde(default = "default_database_url")]
+    pub url: String,
+}
+
+fn default_database_url() -> String {
+    "postgres://reigadegr:1234@127.0.0.1:5432/nanors".to_string()
+}
+
+fn default_database_config() -> DatabaseConfig {
+    DatabaseConfig {
+        url: default_database_url(),
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -83,6 +101,9 @@ impl Config {
                 zhipu: ProviderConfig {
                     api_key: "your-zhipu-api-key-here".to_string(),
                 },
+            },
+            database: DatabaseConfig {
+                url: "postgres://username:password@localhost:5432/nanors".to_string(),
             },
         };
 

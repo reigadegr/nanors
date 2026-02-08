@@ -1,0 +1,17 @@
+{
+  "agents": {
+    "defaults": {
+      "model": "glm-4-flash",
+      "max_tokens": 8192,
+      "temperature": 0.7
+    }
+  },
+  "providers": {
+    "zhipu": {
+      "api_key": "666"
+    }
+  },
+  "database": {
+    "url": "postgres://reigadegr:1234@127.0.0.1:5432/nanors"
+  }
+}

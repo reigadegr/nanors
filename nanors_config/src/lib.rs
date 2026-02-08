@@ -19,4 +19,6 @@
 
 mod schema;
 
-pub use schema::{AgentDefaults, AgentsConfig, Config, ProviderConfig, ProvidersConfig};
+pub use schema::{
+    AgentDefaults, AgentsConfig, Config, DatabaseConfig, ProviderConfig, ProvidersConfig,
+};
