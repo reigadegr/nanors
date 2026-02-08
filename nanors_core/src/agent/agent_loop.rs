@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use std::io::Write;
 use std::sync::{Arc, atomic::AtomicBool};
@@ -10,7 +11,7 @@ use crate::{
 };
 
 /// Tiered retrieval configuration based on memU's approach
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetrievalConfig {
     pub categories_enabled: bool,
     pub categories_top_k: usize,
