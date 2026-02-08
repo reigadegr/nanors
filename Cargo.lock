@@ -113,6 +113,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -1264,7 +1265,6 @@ version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
 dependencies = [
- "cc",
  "pkg-config",
  "vcpkg",
 ]
@@ -1364,6 +1364,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nanors_entities"
+version = "0.1.0"
+dependencies = [
+ "sea-orm",
+ "serde",
+]
+
+[[package]]
 name = "nanors_providers"
 version = "0.1.0"
 dependencies = [
@@ -1384,10 +1392,12 @@ dependencies = [
  "async-trait",
  "chrono",
  "nanors_core",
+ "nanors_entities",
  "sea-orm",
  "serde",
  "serde_json",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

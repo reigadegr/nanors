@@ -65,7 +65,8 @@ where
                 continue;
             }
 
-            match self.process_message("cli:default", input).await {
+            let session_id = uuid::Uuid::now_v7();
+            match self.process_message(&session_id, input).await {
                 Ok(response) => println!("\n{response}\n"),
                 Err(e) => eprintln!("Error: {e}"),
             }
@@ -76,10 +77,10 @@ where
 
     pub async fn process_message(
         &self,
-        session_key: &str,
+        session_id: &uuid::Uuid,
         content: &str,
     ) -> anyhow::Result<String> {
-        info!("Processing message from session: {}", session_key);
+        info!("Processing message from session: {}", session_id);
 
         let messages = vec![ChatMessage {
             role: Role::User,
@@ -89,10 +90,10 @@ where
         let response = self.provider.chat(&messages, &self.config.model).await?;
 
         self.session_manager
-            .add_message(session_key, Role::User, content)
+            .add_message(session_id, Role::User, content)
             .await?;
         self.session_manager
-            .add_message(session_key, Role::Assistant, &response.content)
+            .add_message(session_id, Role::Assistant, &response.content)
             .await?;
 
         Ok(response.content)

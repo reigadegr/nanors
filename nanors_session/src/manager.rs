@@ -19,61 +19,49 @@
 
 use async_trait::async_trait;
 use nanors_core::{ChatMessage, Role, Session as CoreSession, SessionStorage};
-use sea_orm::{ActiveModelTrait, Database, DatabaseConnection, EntityTrait, Schema, Set};
-use std::path::PathBuf;
+use nanors_entities::sessions;
+use sea_orm::{ActiveModelTrait, Database, DatabaseConnection, EntityTrait, Set};
 use tracing::info;
-
-use crate::entity::sessions;
+use uuid::Uuid;
 
 pub struct SessionManager {
     db: DatabaseConnection,
 }
 
 impl SessionManager {
-    pub async fn new(db_path: PathBuf) -> anyhow::Result<Self> {
-        let db_url = format!("sqlite:{}", db_path.display());
-        info!("Connecting to database: {}", db_url);
+    pub async fn new(database_url: &str) -> anyhow::Result<Self> {
+        info!("Connecting to database: {}", database_url);
 
-        let db = Database::connect(&db_url).await?;
-
-        Schema::new(db.get_database_backend())
-            .builder()
-            .register(sessions::Entity)
-            .sync(&db)
-            .await?;
+        let db = Database::connect(database_url).await?;
 
         info!("SessionManager initialized");
         Ok(Self { db })
     }
 
-    pub async fn clear_session(&self, key: &str) -> anyhow::Result<()> {
-        sessions::Entity::delete_by_id(key.to_owned())
-            .exec(&self.db)
-            .await?;
+    pub async fn clear_session(&self, id: &Uuid) -> anyhow::Result<()> {
+        sessions::Entity::delete_by_id(*id).exec(&self.db).await?;
 
-        info!("Cleared session: {}", key);
+        info!("Cleared session: {}", id);
         Ok(())
     }
 
-    pub async fn list_sessions(&self) -> anyhow::Result<Vec<String>> {
+    pub async fn list_sessions(&self) -> anyhow::Result<Vec<Uuid>> {
         let session_models = sessions::Entity::find().all(&self.db).await?;
 
-        Ok(session_models.into_iter().map(|s| s.key).collect())
+        Ok(session_models.into_iter().map(|s| s.id).collect())
     }
 }
 
 #[async_trait]
 impl SessionStorage for SessionManager {
-    async fn get_or_create(&self, key: &str) -> anyhow::Result<CoreSession> {
-        let session_model = sessions::Entity::find_by_id(key.to_owned())
-            .one(&self.db)
-            .await?;
+    async fn get_or_create(&self, id: &Uuid) -> anyhow::Result<CoreSession> {
+        let session_model = sessions::Entity::find_by_id(*id).one(&self.db).await?;
 
         if let Some(model) = session_model {
             let messages: Vec<ChatMessage> = serde_json::from_str(&model.messages)?;
 
             Ok(CoreSession {
-                key: model.key,
+                id: model.id,
                 messages,
                 created_at: model.created_at.and_utc(),
                 updated_at: model.updated_at.and_utc(),
@@ -81,7 +69,7 @@ impl SessionStorage for SessionManager {
         } else {
             let now = chrono::Utc::now();
             Ok(CoreSession {
-                key: key.to_string(),
+                id: *id,
                 messages: vec![],
                 created_at: now,
                 updated_at: now,
@@ -89,13 +77,10 @@ impl SessionStorage for SessionManager {
         }
     }
 
-    async fn add_message(&self, key: &str, role: Role, content: &str) -> anyhow::Result<()> {
+    async fn add_message(&self, id: &Uuid, role: Role, content: &str) -> anyhow::Result<()> {
         let now = chrono::Utc::now().naive_utc();
 
-        if let Some(model) = sessions::Entity::find_by_id(key.to_owned())
-            .one(&self.db)
-            .await?
-        {
+        if let Some(model) = sessions::Entity::find_by_id(*id).one(&self.db).await? {
             let mut messages: Vec<ChatMessage> = serde_json::from_str(&model.messages)?;
             messages.push(ChatMessage {
                 role,
@@ -104,7 +89,7 @@ impl SessionStorage for SessionManager {
             let messages_json = serde_json::to_string(&messages)?;
 
             sessions::Entity::update(sessions::ActiveModel {
-                key: Set(model.key),
+                id: Set(model.id),
                 messages: Set(messages_json),
                 created_at: Set(model.created_at),
                 updated_at: Set(now),
@@ -119,7 +104,7 @@ impl SessionStorage for SessionManager {
             let messages_json = serde_json::to_string(&messages)?;
 
             sessions::ActiveModel {
-                key: Set(key.to_string()),
+                id: Set(*id),
                 messages: Set(messages_json),
                 created_at: Set(now),
                 updated_at: Set(now),
@@ -128,7 +113,7 @@ impl SessionStorage for SessionManager {
             .await?;
         }
 
-        info!("Added message to session: {}", key);
+        info!("Added message to session: {}", id);
         Ok(())
     }
 }

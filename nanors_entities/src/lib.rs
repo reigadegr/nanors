@@ -17,6 +17,5 @@
     clippy::missing_errors_doc
 )]
 
-mod manager;
-
-pub use manager::SessionManager;
+pub mod prelude;
+pub mod sessions;

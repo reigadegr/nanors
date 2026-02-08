@@ -24,6 +24,7 @@ use nanors_providers::ZhipuProvider;
 use nanors_session::SessionManager;
 use tracing::{Level, info};
 use tracing_subscriber::FmtSubscriber;
+use uuid::Uuid;
 
 #[derive(Parser)]
 #[command(name = "nanobot")]
@@ -67,14 +68,10 @@ async fn main() -> anyhow::Result<()> {
             info!("Loaded config from ~/nanors/config.json");
 
             let provider = ZhipuProvider::new(config.providers.zhipu.api_key);
-            let home_dir =
-                dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Cannot find home directory"))?;
-            let nanobot_dir = home_dir.join("nanors");
-            let db_path = nanobot_dir.join("sessions.db");
 
-            info!("Database path: {}", db_path.display());
-
-            let session_manager = SessionManager::new(db_path).await?;
+            info!("Connecting to database");
+            let session_manager =
+                SessionManager::new("postgres://reigadegr:1234@127.0.0.1:5432/nanors").await?;
             let agent_config = AgentConfig {
                 model: model.unwrap_or_else(|| config.agents.defaults.model.clone()),
                 max_tokens: config.agents.defaults.max_tokens,
@@ -84,7 +81,8 @@ async fn main() -> anyhow::Result<()> {
             let agent = AgentLoop::new(provider, session_manager, agent_config);
 
             if let Some(msg) = message {
-                let response = agent.process_message("cli:default", &msg).await?;
+                let session_id = Uuid::now_v7();
+                let response = agent.process_message(&session_id, &msg).await?;
                 println!("{response}");
             } else {
                 agent.run_interactive().await?;

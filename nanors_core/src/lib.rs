@@ -19,6 +19,7 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 pub mod agent;
 pub mod tools;
@@ -62,13 +63,13 @@ pub trait LLMProvider: Send + Sync {
 
 #[async_trait]
 pub trait SessionStorage: Send + Sync {
-    async fn get_or_create(&self, key: &str) -> anyhow::Result<Session>;
-    async fn add_message(&self, key: &str, role: Role, content: &str) -> anyhow::Result<()>;
+    async fn get_or_create(&self, id: &Uuid) -> anyhow::Result<Session>;
+    async fn add_message(&self, id: &Uuid, role: Role, content: &str) -> anyhow::Result<()>;
 }
 
 #[derive(Debug, Clone)]
 pub struct Session {
-    pub key: String,
+    pub id: Uuid,
     pub messages: Vec<ChatMessage>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
