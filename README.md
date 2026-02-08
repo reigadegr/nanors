@@ -31,9 +31,20 @@ nanors/
     └── src/
 ```
 
+## 配置文件位置
+
+所有配置和数据文件统一放在 `~/.nanobot` 目录下：
+
+```
+~/.nanobot/
+├── config.json          # 配置文件（必需）
+├── config.json.example  # 示例配置（init 时创建）
+└── sessions.db         # 数据库文件（自动创建）
+```
+
 ## 技术栈
 
-基于 `pmi-rust-backend` 经过生产验证的技术栈：
+基于 `pmi-rust_backend` 经过生产验证的技术栈：
 
 | 依赖 | 版本 | 说明 |
 |------|------|------|
@@ -71,13 +82,14 @@ sea-orm = { version = "2.0.0-rc.30", features = [
 cargo run -- init
 ```
 
-这将创建示例配置文件 `~/.nanobot/config.json.example`。
+这将创建 `~/.nanobot/config.json.example`。
 
 ### 2. 编辑配置
 
 ```bash
-cp ~/.nanobot/config.json.example ~/.nanobot/config.json
-# 编辑 ~/.nanobot/config.json，填入你的智谱 API Key
+cd ~/.nanobot
+cp config.json.example config.json
+# 编辑 config.json，填入你的智谱 API Key
 ```
 
 配置文件格式：
@@ -196,6 +208,7 @@ export RUSTFLAGS="-Z function-sections=yes -C link-arg=-fuse-ld=/usr/bin/mold -C
 - ✅ Workspace 架构（5 个 crate）
 - ✅ 完整的 clippy 检查（pedantic、nursery 等）
 - ✅ 生产级技术栈（与 pmi-rust-backend 一致）
+- ✅ 所有配置和数据统一在 `~/.nanobot` 目录
 
 ## 代码规范
 
@@ -235,6 +248,15 @@ export RUSTFLAGS="-Z function-sections=yes -C link-arg=-fuse-ld=/usr/bin/mold -C
 - SQLite
 
 默认使用 SQLite，可根据需要切换到 PostgreSQL 或 MySQL。
+
+## 文件结构
+
+```
+~/.nanobot/
+├── config.json          # 配置文件（必需）
+├── config.json.example  # 示例配置
+└── sessions.db         # 数据库文件（自动创建）
+```
 
 ## 许可证
 
