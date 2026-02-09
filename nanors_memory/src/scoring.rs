@@ -84,6 +84,71 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
     dot / denom
 }
 
+/// Chinese question keywords that indicate a question rather than an answer.
+/// When these appear in memory, and the query also contains them, the memory
+/// should be penalized to avoid retrieving questions instead of answers.
+const QUESTION_KEYWORDS: &[&str] = &[
+    "哪",
+    "什么",
+    "谁",
+    "多少",
+    "怎么",
+    "如何",
+    "为什么",
+    "为啥",
+    "吗",
+    "是不是",
+    "呢",
+];
+
+/// Detect if text contains Chinese question keywords.
+///
+/// Returns the count of unique question keywords found in the text.
+/// This is used to penalize memories that are questions when the user's
+/// query is also a question.
+#[must_use]
+pub fn count_question_keywords(text: &str) -> usize {
+    QUESTION_KEYWORDS
+        .iter()
+        .filter(|keyword| text.contains(**keyword))
+        .count()
+}
+
+/// Compute question penalty for memory retrieval.
+///
+/// When both the query and the memory contain question keywords, we heavily penalize
+/// the memory to avoid returning questions instead of answers.
+///
+/// Penalty formula: `1.0 - (query_question_count * memory_question_count) * 0.50`
+///
+/// This ensures that:
+/// - If neither contains question keywords, no penalty (factor = 1.0)
+/// - If only one contains question keywords, no penalty (factor = 1.0)
+/// - If both contain question keywords, 50% penalty per matching pair
+///
+/// # Examples
+/// - Query "我住哪" (1 keyword) vs Memory "我住西城区" (0 keywords): factor = 1.0
+/// - Query "我住哪" (1 keyword) vs Memory "你住哪里" (1 keyword): factor = 0.50
+/// - Query "我住在哪里呢" (2 keywords) vs Memory "你住哪" (1 keyword): factor = 0.0
+///
+/// The heavy penalty ensures that answers (which typically don't contain question
+/// keywords) rank much higher than questions when the user asks a question.
+#[must_use]
+pub fn question_penalty(query_text: &str, memory_text: &str) -> f64 {
+    let query_count = count_question_keywords(query_text);
+    let memory_count = count_question_keywords(memory_text);
+
+    // Only apply penalty if both contain question keywords
+    if query_count == 0 || memory_count == 0 {
+        return 1.0;
+    }
+
+    // Heavy penalty: 50% reduction per matching pair of question keywords
+    // This ensures answers rank much higher than questions
+    let penalty = query_count * memory_count * 50;
+    (1.0 - penalty.min(100) as f64 / 100.0).max(0.0)
+}
+
 /// Compute salience score for a memory item.
 ///
 /// Formula: `similarity * (1 + ln(1 + reinforcement_count)) * 1/ln(2 + hours_ago)`
@@ -144,5 +209,57 @@ mod tests {
         let s_recent = compute_salience(0.9, 3, recent, now);
         let s_old = compute_salience(0.9, 3, old, now);
         assert!(s_recent > s_old);
+    }
+
+    #[test]
+    fn count_question_keywords_counts_unique_keywords() {
+        assert_eq!(count_question_keywords("我住哪"), 1);
+        assert_eq!(count_question_keywords("你住在哪里呢"), 2); // 哪, 呢
+        assert_eq!(count_question_keywords("这是什么"), 1); // 什么
+        assert_eq!(count_question_keywords("谁有多少钱"), 2); // 谁, 多少
+        assert_eq!(count_question_keywords("我住西城区"), 0);
+        assert_eq!(count_question_keywords("我喜欢吃苹果"), 0);
+    }
+
+    #[test]
+    fn question_penalty_no_penalty_when_no_keywords() {
+        // Neither query nor memory has question keywords
+        let penalty = question_penalty("我住西城区", "User: 我住朝阳区");
+        assert!((penalty - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn question_penalty_no_penalty_when_only_query_has_keywords() {
+        // Query has question keyword, memory doesn't
+        let penalty = question_penalty("我住哪", "User: 我住西城区");
+        assert!((penalty - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn question_penalty_no_penalty_when_only_memory_has_keywords() {
+        // Memory has question keyword, query doesn't
+        let penalty = question_penalty("我住西城区", "User: 你住哪里");
+        assert!((penalty - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn question_penalty_applies_when_both_have_keywords() {
+        // Both have 1 question keyword each - 50% penalty
+        let penalty = question_penalty("我住哪", "User: 你住哪里");
+        assert!((penalty - 0.50).abs() < 1e-9); // 1.0 - 1*1*0.50 = 0.50
+    }
+
+    #[test]
+    fn question_penalty_multiple_keywords_in_both() {
+        // Query has 2 keywords, memory has 1 keyword - 100% penalty (capped)
+        let penalty = question_penalty("我住在哪里呢", "User: 你住哪");
+        assert!((penalty - 0.0).abs() < 1e-9); // 1.0 - 2*1*0.50 = 0.0 (capped at 0)
+    }
+
+    #[test]
+    fn question_penalty_capped_at_100_percent() {
+        // Even with many keywords, penalty is capped at 100%
+        let penalty = question_penalty("这是什么为什么怎么如何", "User: 哪谁多少吗呢啊");
+        assert!((penalty - 0.0).abs() < 1e-9); // Capped at 100% penalty
     }
 }

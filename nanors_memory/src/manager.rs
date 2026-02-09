@@ -279,22 +279,28 @@ impl MemoryItemRepo for MemoryManager {
                     let keyword_overlap = scoring::keyword_overlap(query_text, &item.summary);
                     // Use hybrid similarity: 70% vector + 30% keyword
                     let hybrid_sim = scoring::hybrid_similarity(vector_sim, keyword_overlap);
+                    // Apply question penalty: penalize memories that are questions when query is also a question
+                    let question_penalty = scoring::question_penalty(query_text, &item.summary);
+                    let penalized_sim = hybrid_sim * question_penalty;
                     let sal = scoring::compute_salience(
-                        hybrid_sim,
+                        penalized_sim,
                         item.reinforcement_count,
                         item.happened_at,
                         now,
                     );
-                    (hybrid_sim, sal)
+                    (penalized_sim, sal)
                 } else {
                     // Items without embeddings get a low default score based on recency only
                     // Still compute keyword overlap for relevance
                     let keyword_overlap = scoring::keyword_overlap(query_text, &item.summary);
                     let hybrid_sim = scoring::hybrid_similarity(0.0, keyword_overlap);
+                    // Apply question penalty even for items without embeddings
+                    let question_penalty = scoring::question_penalty(query_text, &item.summary);
+                    let penalized_sim = hybrid_sim * question_penalty;
                     (
-                        hybrid_sim,
+                        penalized_sim,
                         scoring::compute_salience(
-                            hybrid_sim,
+                            penalized_sim,
                             item.reinforcement_count,
                             item.happened_at,
                             now,
@@ -311,11 +317,45 @@ impl MemoryItemRepo for MemoryManager {
             .filter(|score| score.similarity < 0.95)
             .collect();
 
-        // Sort by similarity first (primary), then by salience score (secondary)
-        // This ensures semantic relevance is prioritized over recency
-        filtered_scores.par_sort_unstable_by(|a, b| match b.similarity.total_cmp(&a.similarity) {
-            std::cmp::Ordering::Equal => b.score.total_cmp(&a.score),
-            other => other,
+        // Sort memories with a multi-tier priority system:
+        // 1. Primary tier: Facts (no question keywords) > Questions (with question keywords)
+        // 2. Secondary tier: For facts, time-weighted similarity (newest wins when close)
+        //                     For questions, salience score (higher is better)
+        // 3. Tertiary tier: Recency (newest first)
+        //
+        // This ensures that:
+        // - When a user asks a question, factual answers rank higher than questions
+        // - Among facts, newer memories are preferred when semantic similarity is close
+        // - The time-based tiebreaker uses a small epsilon threshold for "closeness"
+        let similarity_epsilon = 0.05_f64;
+
+        filtered_scores.par_sort_unstable_by(|a, b| {
+            // Primary: Facts (no question keywords) rank higher than questions
+            let a_is_question = scoring::count_question_keywords(&a.item.summary) > 0;
+            let b_is_question = scoring::count_question_keywords(&b.item.summary) > 0;
+            match (!a_is_question, !b_is_question) {
+                (true, false) => return std::cmp::Ordering::Less, // a is fact, b is question: a < b (a first)
+                (false, true) => return std::cmp::Ordering::Greater, // a is question, b is fact: a > b (b first)
+                _ => {}
+            }
+
+            // Secondary: different strategies for facts vs questions
+            if !a_is_question && !b_is_question {
+                // Both are facts: prefer newer memory when similarities are close
+                let sim_diff = (a.similarity - b.similarity).abs();
+                if sim_diff < similarity_epsilon {
+                    // Similarities are close: newest wins
+                    return b.item.happened_at.cmp(&a.item.happened_at);
+                }
+                // Otherwise: higher similarity wins
+                b.similarity.total_cmp(&a.similarity)
+            } else {
+                // Both are questions: higher salience score wins
+                match b.score.total_cmp(&a.score) {
+                    std::cmp::Ordering::Equal => b.item.happened_at.cmp(&a.item.happened_at),
+                    other => other,
+                }
+            }
         });
 
         // Deduplicate: keep only the highest-similarity item for each unique summary
