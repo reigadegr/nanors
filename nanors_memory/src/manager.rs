@@ -1,11 +1,8 @@
 use async_trait::async_trait;
 use chrono::Utc;
-use nanors_core::memory::{
-    CategoryItem, CategorySalienceScore, MemoryCategory, MemoryItem, Resource,
-    ResourceSalienceScore, SalienceScore,
-};
-use nanors_core::{CategoryItemRepo, MemoryCategoryRepo, MemoryItemRepo, ResourceRepo};
-use nanors_entities::{category_items, memory_categories, memory_items, resources};
+use nanors_core::MemoryItemRepo;
+use nanors_core::memory::{MemoryItem, SalienceScore};
+use nanors_entities::memory_items;
 use rayon::prelude::*;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Database, DatabaseConnection, EntityTrait, ModelTrait,
@@ -161,7 +158,6 @@ impl MemoryItemRepo for MemoryManager {
         let model = memory_items::ActiveModel {
             id: Set(item.id),
             user_scope: Set(item.user_scope.clone()),
-            resource_id: Set(item.resource_id),
             memory_type: Set(item.memory_type.to_string()),
             summary: Set(item.summary.clone()),
             embedding: Set(embedding_json),
@@ -171,9 +167,6 @@ impl MemoryItemRepo for MemoryManager {
             reinforcement_count: Set(item.reinforcement_count),
             created_at: Set(item.created_at.into()),
             updated_at: Set(item.updated_at.into()),
-            version: Set(item.version),
-            parent_version_id: Set(item.parent_version_id),
-            version_relation: Set(item.version_relation.clone()),
         };
         model.insert(&self.db).await?;
         Ok(())
@@ -206,7 +199,6 @@ impl MemoryItemRepo for MemoryManager {
         let model = memory_items::ActiveModel {
             id: Set(existing.id),
             user_scope: Set(item.user_scope.clone()),
-            resource_id: Set(item.resource_id),
             memory_type: Set(item.memory_type.to_string()),
             summary: Set(item.summary.clone()),
             embedding: Set(item
@@ -219,9 +211,6 @@ impl MemoryItemRepo for MemoryManager {
             reinforcement_count: Set(item.reinforcement_count),
             created_at: Set(existing.created_at),
             updated_at: Set(item.updated_at.into()),
-            version: Set(existing.version + 1),
-            parent_version_id: Set(Some(existing.id)),
-            version_relation: Set(Some("Updates".to_string())),
         };
         model.update(&self.db).await?;
         Ok(())
@@ -334,247 +323,5 @@ impl MemoryItemRepo for MemoryManager {
     ) -> anyhow::Result<Uuid> {
         self.semantic_upsert_memory(item, similarity_threshold)
             .await
-    }
-}
-
-#[async_trait]
-impl MemoryCategoryRepo for MemoryManager {
-    async fn insert(&self, cat: &MemoryCategory) -> anyhow::Result<()> {
-        let model = memory_categories::ActiveModel {
-            id: Set(cat.id),
-            user_scope: Set(cat.user_scope.clone()),
-            name: Set(cat.name.clone()),
-            description: Set(cat.description.clone()),
-            embedding: Set(cat
-                .embedding
-                .as_ref()
-                .map(|v| convert::embedding_to_json(v.as_slice()))),
-            summary: Set(cat.summary.clone()),
-            created_at: Set(cat.created_at.into()),
-            updated_at: Set(cat.updated_at.into()),
-        };
-        model.insert(&self.db).await?;
-        Ok(())
-    }
-
-    async fn find_by_id(&self, id: &Uuid) -> anyhow::Result<Option<MemoryCategory>> {
-        let result = memory_categories::Entity::find_by_id(*id)
-            .one(&self.db)
-            .await?;
-        Ok(result.map(convert::memory_category_from_model))
-    }
-
-    async fn find_by_name(
-        &self,
-        user_scope: &str,
-        name: &str,
-    ) -> anyhow::Result<Option<MemoryCategory>> {
-        let result = memory_categories::Entity::find()
-            .filter(memory_categories::Column::UserScope.eq(user_scope))
-            .filter(memory_categories::Column::Name.eq(name))
-            .one(&self.db)
-            .await?;
-        Ok(result.map(convert::memory_category_from_model))
-    }
-
-    async fn update(&self, cat: &MemoryCategory) -> anyhow::Result<()> {
-        let existing = memory_categories::Entity::find_by_id(cat.id)
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("MemoryCategory not found: {}", cat.id))?;
-
-        let model = memory_categories::ActiveModel {
-            id: Set(existing.id),
-            user_scope: Set(cat.user_scope.clone()),
-            name: Set(cat.name.clone()),
-            description: Set(cat.description.clone()),
-            embedding: Set(cat
-                .embedding
-                .as_ref()
-                .map(|v| convert::embedding_to_json(v.as_slice()))),
-            summary: Set(cat.summary.clone()),
-            created_at: Set(existing.created_at),
-            updated_at: Set(cat.updated_at.into()),
-        };
-        model.update(&self.db).await?;
-        Ok(())
-    }
-
-    async fn delete(&self, id: &Uuid) -> anyhow::Result<()> {
-        let existing = memory_categories::Entity::find_by_id(*id)
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("MemoryCategory not found: {id}"))?;
-
-        existing.delete(&self.db).await?;
-        Ok(())
-    }
-
-    async fn list_by_scope(&self, user_scope: &str) -> anyhow::Result<Vec<MemoryCategory>> {
-        let results = memory_categories::Entity::find()
-            .filter(memory_categories::Column::UserScope.eq(user_scope))
-            .all(&self.db)
-            .await?;
-        Ok(results
-            .into_iter()
-            .map(convert::memory_category_from_model)
-            .collect())
-    }
-
-    async fn search_by_embedding(
-        &self,
-        user_scope: &str,
-        query_embedding: &[f32],
-        top_k: usize,
-    ) -> anyhow::Result<Vec<CategorySalienceScore>> {
-        let categories: Vec<MemoryCategory> =
-            MemoryCategoryRepo::list_by_scope(self, user_scope).await?;
-
-        let mut scores: Vec<CategorySalienceScore> = categories
-            .into_par_iter()
-            .map(|category| {
-                // Categories without embeddings get a low default score
-                let score = category.embedding.as_ref().map_or(0.0, |embedding| {
-                    scoring::cosine_similarity(query_embedding, embedding)
-                });
-                CategorySalienceScore {
-                    item: category,
-                    score,
-                }
-            })
-            .collect();
-
-        // Use parallel unstable sort for better performance (no extra allocation)
-        scores.par_sort_unstable_by(|a, b| b.score.total_cmp(&a.score));
-        scores.truncate(top_k);
-
-        Ok(scores)
-    }
-}
-
-#[async_trait]
-impl CategoryItemRepo for MemoryManager {
-    async fn link(&self, item_id: &Uuid, category_id: &Uuid) -> anyhow::Result<()> {
-        let model = category_items::ActiveModel {
-            item_id: Set(*item_id),
-            category_id: Set(*category_id),
-        };
-        model.insert(&self.db).await?;
-        Ok(())
-    }
-
-    async fn unlink(&self, item_id: &Uuid, category_id: &Uuid) -> anyhow::Result<()> {
-        let existing = category_items::Entity::find()
-            .filter(category_items::Column::ItemId.eq(*item_id))
-            .filter(category_items::Column::CategoryId.eq(*category_id))
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "CategoryItem link not found: item_id={item_id}, category_id={category_id}"
-                )
-            })?;
-
-        existing.delete(&self.db).await?;
-        Ok(())
-    }
-
-    async fn categories_for_item(&self, item_id: &Uuid) -> anyhow::Result<Vec<CategoryItem>> {
-        let results = category_items::Entity::find()
-            .filter(category_items::Column::ItemId.eq(*item_id))
-            .all(&self.db)
-            .await?;
-        Ok(results
-            .into_iter()
-            .map(|m| convert::category_item_from_model(&m))
-            .collect())
-    }
-
-    async fn items_for_category(&self, category_id: &Uuid) -> anyhow::Result<Vec<CategoryItem>> {
-        let results = category_items::Entity::find()
-            .filter(category_items::Column::CategoryId.eq(*category_id))
-            .all(&self.db)
-            .await?;
-        Ok(results
-            .into_iter()
-            .map(|m| convert::category_item_from_model(&m))
-            .collect())
-    }
-}
-
-#[async_trait]
-impl ResourceRepo for MemoryManager {
-    async fn insert(&self, res: &Resource) -> anyhow::Result<()> {
-        let model = resources::ActiveModel {
-            id: Set(res.id),
-            user_scope: Set(res.user_scope.clone()),
-            url: Set(res.url.clone()),
-            modality: Set(res.modality.clone()),
-            local_path: Set(res.local_path.clone()),
-            caption: Set(res.caption.clone()),
-            embedding: Set(res
-                .embedding
-                .as_ref()
-                .map(|v| convert::embedding_to_json(v.as_slice()))),
-            created_at: Set(res.created_at.into()),
-            updated_at: Set(res.updated_at.into()),
-        };
-        model.insert(&self.db).await?;
-        Ok(())
-    }
-
-    async fn find_by_id(&self, id: &Uuid) -> anyhow::Result<Option<Resource>> {
-        let result = resources::Entity::find_by_id(*id).one(&self.db).await?;
-        Ok(result.map(convert::resource_from_model))
-    }
-
-    async fn delete(&self, id: &Uuid) -> anyhow::Result<()> {
-        let existing = resources::Entity::find_by_id(*id)
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("Resource not found: {id}"))?;
-
-        existing.delete(&self.db).await?;
-        Ok(())
-    }
-
-    async fn list_by_scope(&self, user_scope: &str) -> anyhow::Result<Vec<Resource>> {
-        let results = resources::Entity::find()
-            .filter(resources::Column::UserScope.eq(user_scope))
-            .all(&self.db)
-            .await?;
-        Ok(results
-            .into_iter()
-            .map(convert::resource_from_model)
-            .collect())
-    }
-
-    async fn search_by_embedding(
-        &self,
-        user_scope: &str,
-        query_embedding: &[f32],
-        top_k: usize,
-    ) -> anyhow::Result<Vec<ResourceSalienceScore>> {
-        let resources: Vec<Resource> = ResourceRepo::list_by_scope(self, user_scope).await?;
-
-        let mut scores: Vec<ResourceSalienceScore> = resources
-            .into_par_iter()
-            .map(|resource| {
-                // Resources without embeddings get a low default score
-                let score = resource.embedding.as_ref().map_or(0.0, |embedding| {
-                    scoring::cosine_similarity(query_embedding, embedding)
-                });
-                ResourceSalienceScore {
-                    item: resource,
-                    score,
-                }
-            })
-            .collect();
-
-        // Use parallel unstable sort for better performance (no extra allocation)
-        scores.par_sort_unstable_by(|a, b| b.score.total_cmp(&a.score));
-        scores.truncate(top_k);
-
-        Ok(scores)
     }
 }

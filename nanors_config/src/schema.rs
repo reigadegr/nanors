@@ -144,28 +144,8 @@ impl Config {
                 enabled: false,
                 default_user_scope: "default".to_string(),
                 retrieval: RetrievalConfig {
-                    categories_enabled: true,
-                    categories_top_k: 3,
                     items_top_k: 10,
-                    resources_enabled: true,
-                    resources_top_k: 2,
                     context_target_length: 2000,
-                    sufficiency_check_enabled: false,
-                    enable_category_compression: false,
-                    category_summary_target_length: 400,
-                    adaptive_items: nanors_core::retrieval::AdaptiveConfig {
-                        enabled: true,
-                        max_results: 100,
-                        min_results: 3,
-                        strategy: nanors_core::retrieval::CutoffStrategy::Combined {
-                            relative_threshold: 0.25,
-                            max_drop_ratio: 0.5,
-                            absolute_min: 0.15,
-                        },
-                        normalize_scores: false,
-                    },
-                    adaptive_categories: nanors_core::retrieval::AdaptiveConfig::default(),
-                    adaptive_resources: nanors_core::retrieval::AdaptiveConfig::default(),
                 },
             },
         };

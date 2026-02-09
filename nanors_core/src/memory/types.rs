@@ -37,7 +37,6 @@ impl std::str::FromStr for MemoryType {
 pub struct MemoryItem {
     pub id: Uuid,
     pub user_scope: String,
-    pub resource_id: Option<Uuid>,
     pub memory_type: MemoryType,
     pub summary: String,
     pub embedding: Option<Vec<f32>>,
@@ -45,43 +44,6 @@ pub struct MemoryItem {
     pub extra: Option<serde_json::Value>,
     pub content_hash: String,
     pub reinforcement_count: i32,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    /// Version number for this memory
-    pub version: i32,
-    /// Parent version ID for version chain
-    pub parent_version_id: Option<Uuid>,
-    /// Version relation type (Sets, Updates, etc.)
-    pub version_relation: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct MemoryCategory {
-    pub id: Uuid,
-    pub user_scope: String,
-    pub name: String,
-    pub description: Option<String>,
-    pub embedding: Option<Vec<f32>>,
-    pub summary: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CategoryItem {
-    pub item_id: Uuid,
-    pub category_id: Uuid,
-}
-
-#[derive(Debug, Clone)]
-pub struct Resource {
-    pub id: Uuid,
-    pub user_scope: String,
-    pub url: Option<String>,
-    pub modality: String,
-    pub local_path: Option<String>,
-    pub caption: Option<String>,
-    pub embedding: Option<Vec<f32>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

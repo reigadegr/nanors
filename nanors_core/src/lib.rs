@@ -32,11 +32,7 @@ pub mod tools;
 
 pub use agent::{AgentConfig, AgentLoop};
 pub use conversation::{ConversationSegment, ConversationSegmenter, SegmentationConfig};
-pub use memory::{
-    CategoryItem, CategoryItemRepo, CategorySalienceScore, MemoryCategory, MemoryCategoryRepo,
-    MemoryItem, MemoryItemRepo, MemoryType, Resource, ResourceRepo, ResourceSalienceScore,
-    SalienceScore,
-};
+pub use memory::{MemoryItem, MemoryItemRepo, MemoryType, SalienceScore};
 pub use retrieval::{CategoryCompressor, SufficiencyChecker};
 pub use tools::{Tool, ToolRegistry};
 

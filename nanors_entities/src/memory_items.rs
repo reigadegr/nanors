@@ -10,7 +10,6 @@ pub struct Model {
     pub id: Uuid,
     #[sea_orm(column_type = "String(StringLen::N(255))")]
     pub user_scope: String,
-    pub resource_id: Option<Uuid>,
     #[sea_orm(column_type = "String(StringLen::N(64))")]
     pub memory_type: String,
     #[sea_orm(column_type = "Text")]
@@ -25,60 +24,9 @@ pub struct Model {
     pub reinforcement_count: i32,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
-    pub version: i32,
-    pub parent_version_id: Option<Uuid>,
-    pub version_relation: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {
-    #[sea_orm(has_many = "super::category_items::Entity")]
-    CategoryItems,
-    #[sea_orm(has_many = "super::memory_cards::Entity")]
-    MemoryCards,
-    #[sea_orm(has_many = "super::memory_item_versions::Entity")]
-    MemoryItemVersions,
-    #[sea_orm(
-        belongs_to = "super::resources::Entity",
-        from = "Column::ResourceId",
-        to = "super::resources::Column::Id",
-        on_update = "NoAction",
-        on_delete = "SetNull"
-    )]
-    Resources,
-}
-
-impl Related<super::category_items::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::CategoryItems.def()
-    }
-}
-
-impl Related<super::memory_cards::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::MemoryCards.def()
-    }
-}
-
-impl Related<super::memory_item_versions::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::MemoryItemVersions.def()
-    }
-}
-
-impl Related<super::resources::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Resources.def()
-    }
-}
-
-impl Related<super::memory_categories::Entity> for Entity {
-    fn to() -> RelationDef {
-        super::category_items::Relation::MemoryCategories.def()
-    }
-    fn via() -> Option<RelationDef> {
-        Some(super::category_items::Relation::MemoryItems.def().rev())
-    }
-}
+pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}

@@ -17,7 +17,7 @@ mod info;
 mod init;
 mod version;
 
-/// Set up memory agent with tiered retrieval.
+/// Set up memory agent with retrieval.
 ///
 /// This is a shared utility function used by the `AgentStrategy`.
 async fn setup_memory_agent(
@@ -31,16 +31,13 @@ async fn setup_memory_agent(
     let retrieval_config = config.memory.retrieval.clone();
 
     info!(
-        "Tiered retrieval config: categories_top_k={}, items_top_k={}, resources_top_k={}, context_target_length={}",
-        retrieval_config.categories_top_k,
-        retrieval_config.items_top_k,
-        retrieval_config.resources_top_k,
-        retrieval_config.context_target_length
+        "Retrieval config: items_top_k={}, context_target_length={}",
+        retrieval_config.items_top_k, retrieval_config.context_target_length
     );
 
     Ok(agent
-        .with_memory(memory_manager.clone(), user_scope)
-        .with_tiered_retrieval(memory_manager.clone(), memory_manager, retrieval_config))
+        .with_memory(memory_manager, user_scope)
+        .with_retrieval_config(retrieval_config))
 }
 
 pub use agent::{AgentInput, AgentStrategy};
