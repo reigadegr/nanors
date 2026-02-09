@@ -28,9 +28,6 @@ pub struct Model {
     pub version: i32,
     pub parent_version_id: Option<Uuid>,
     pub version_relation: Option<String>,
-    pub fact_type: Option<String>,
-    pub is_active: bool,
-    pub parent_id: Option<Uuid>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -42,11 +42,6 @@ pub struct MemoryConfig {
     pub default_user_scope: String,
     #[serde(default)]
     pub retrieval: RetrievalConfig,
-    /// Semantic similarity threshold (0.0-1.0) for memory versioning.
-    /// When storing a new memory, if an existing memory has similarity
-    /// above this threshold, a new version is created instead of a new memory.
-    #[serde(default = "MemoryConfig::default_semantic_similarity_threshold")]
-    pub semantic_similarity_threshold: f64,
 }
 
 impl Default for MemoryConfig {
@@ -55,7 +50,6 @@ impl Default for MemoryConfig {
             enabled: false,
             default_user_scope: Self::default_user_scope(),
             retrieval: RetrievalConfig::default(),
-            semantic_similarity_threshold: Self::default_semantic_similarity_threshold(),
         }
     }
 }
@@ -63,10 +57,6 @@ impl Default for MemoryConfig {
 impl MemoryConfig {
     fn default_user_scope() -> String {
         "default".to_string()
-    }
-
-    const fn default_semantic_similarity_threshold() -> f64 {
-        0.75
     }
 }
 
@@ -153,7 +143,6 @@ impl Config {
             memory: MemoryConfig {
                 enabled: false,
                 default_user_scope: "default".to_string(),
-                semantic_similarity_threshold: 0.75,
                 retrieval: RetrievalConfig {
                     categories_enabled: true,
                     categories_top_k: 3,
@@ -167,7 +156,6 @@ impl Config {
                     adaptive_items: nanors_core::retrieval::AdaptiveConfig::default(),
                     adaptive_categories: nanors_core::retrieval::AdaptiveConfig::default(),
                     adaptive_resources: nanors_core::retrieval::AdaptiveConfig::default(),
-                    semantic_similarity_threshold: 0.75,
                 },
             },
         };

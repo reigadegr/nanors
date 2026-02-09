@@ -5,7 +5,6 @@ use std::sync::{Arc, atomic::AtomicBool};
 use tracing::{debug, info};
 use uuid::Uuid;
 
-use crate::memory::KeywordLibrary;
 use crate::{
     ChatMessage, LLMProvider, MemoryCategoryRepo, MemoryItem, MemoryItemRepo, MemoryType,
     ResourceRepo, Role, SessionStorage,
@@ -43,9 +42,6 @@ pub struct RetrievalConfig {
     /// Adaptive retrieval configuration for resources
     #[serde(default)]
     pub adaptive_resources: AdaptiveConfig,
-    /// Semantic similarity threshold (0.0-1.0) for memory versioning
-    #[serde(default = "RetrievalConfig::default_semantic_similarity_threshold")]
-    pub semantic_similarity_threshold: f64,
 }
 
 impl Default for RetrievalConfig {
@@ -63,7 +59,6 @@ impl Default for RetrievalConfig {
             adaptive_items: AdaptiveConfig::default(),
             adaptive_categories: AdaptiveConfig::default(),
             adaptive_resources: AdaptiveConfig::default(),
-            semantic_similarity_threshold: Self::default_semantic_similarity_threshold(),
         }
     }
 }
@@ -71,10 +66,6 @@ impl Default for RetrievalConfig {
 impl RetrievalConfig {
     const fn default_category_summary_target_length() -> usize {
         400
-    }
-
-    const fn default_semantic_similarity_threshold() -> f64 {
-        0.75
     }
 }
 
@@ -94,7 +85,6 @@ where
     retrieval_config: RetrievalConfig,
     sufficiency_checker: Option<Arc<dyn SufficiencyChecker>>,
     category_compressor: Option<Arc<dyn CategoryCompressor>>,
-    keyword_library: KeywordLibrary,
 }
 
 #[derive(Debug, Clone)]
@@ -132,7 +122,6 @@ where
             retrieval_config: RetrievalConfig::default(),
             sufficiency_checker: None,
             category_compressor: None,
-            keyword_library: KeywordLibrary::new(),
         }
     }
 
@@ -325,7 +314,7 @@ where
     /// Retrieve and format tier 2 memory items
     async fn retrieve_items_tier(
         &self,
-        query: &str,
+        _query: &str,
         query_embedding: &[f32],
         context_parts: &mut Vec<String>,
         total_length: &mut usize,
@@ -334,29 +323,6 @@ where
             return;
         };
 
-        // First, try keyword-based fact lookup
-        if let Some(fact_type) = self.keyword_library.match_fact_type(query) {
-            let fact_type_str = fact_type.as_str();
-            info!("Query matched fact_type: {}", fact_type_str);
-
-            if let Ok(Some(fact_memory)) = memory_manager
-                .find_active_by_fact_type(&self.user_scope, fact_type_str)
-                .await
-            {
-                info!("Found active fact memory: {}", fact_memory.id);
-                let text = format!("- {}", fact_memory.summary);
-                *total_length = Self::add_context_part(
-                    context_parts,
-                    text,
-                    *total_length,
-                    self.retrieval_config.context_target_length,
-                );
-                return;
-            }
-            info!("No active memory found for fact_type: {}", fact_type_str);
-        }
-
-        // Fall back to semantic search
         let adaptive_config = &self.retrieval_config.adaptive_items;
 
         // Use adaptive retrieval: fetch more results and dynamically determine cutoff
@@ -616,14 +582,11 @@ where
                 version: 1,
                 parent_version_id: None,
                 version_relation: None,
-                fact_type: None,
-                is_active: true,
-                parent_id: None,
             };
 
-            match memory.keyword_versioned_insert(&user_memory).await {
-                Ok(id) => {
-                    debug!("Stored user memory with keyword versioning: {id}");
+            match memory.insert(&user_memory).await {
+                Ok(_) => {
+                    debug!("Stored user memory: {}", user_memory.id);
                 }
                 Err(e) => {
                     debug!("Failed to store user memory: {e}");
@@ -650,21 +613,18 @@ where
                 version: 1,
                 parent_version_id: None,
                 version_relation: None,
-                fact_type: None,
-                is_active: true,
-                parent_id: None,
             };
 
-            match memory.keyword_versioned_insert(&assistant_memory).await {
-                Ok(id) => {
-                    debug!("Stored assistant memory with keyword versioning: {id}");
+            match memory.insert(&assistant_memory).await {
+                Ok(_) => {
+                    debug!("Stored assistant memory: {}", assistant_memory.id);
                 }
                 Err(e) => {
                     debug!("Failed to store assistant memory: {e}");
                 }
             }
 
-            debug!("Stored interaction as memories with keyword versioning");
+            debug!("Stored interaction as memories");
 
             // Trigger category compression if enabled
             if self.retrieval_config.enable_category_compression {

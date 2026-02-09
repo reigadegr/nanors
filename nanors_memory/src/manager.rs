@@ -149,190 +149,6 @@ impl MemoryManager {
         info!("Inserted new memory: {}", new_item.id);
         Ok(new_item.id)
     }
-
-    /// Insert or update a memory item using keyword-triggered versioning.
-    ///
-    /// This method implements rule-based memory versioning without LLM:
-    /// 1. Analyzes the memory to detect fact type using keywords
-    /// 2. If it's an assistant response, just store it (no versioning)
-    /// 3. If it's a user input with a fact type:
-    ///    - Find existing active memory with same `fact_type`
-    ///    - Mark old memory as inactive
-    ///    - Create new version marked as active
-    /// 4. Otherwise store as non-fact memory
-    ///
-    /// # Arguments
-    /// * `item` - The memory item to insert or use for update
-    ///
-    /// # Returns
-    /// ID of the inserted or updated memory
-    #[tracing::instrument(skip(self, item))]
-    pub async fn keyword_versioned_insert(&self, item: &MemoryItem) -> anyhow::Result<Uuid> {
-        use nanors_core::memory::{MemoryVersioner, VersioningAction};
-
-        let versioner = MemoryVersioner::new();
-        let result = versioner.analyze(item);
-
-        match result.action {
-            VersioningAction::NoVersioning => {
-                // Assistant response - just store it
-                let hash = dedup::content_hash(&item.memory_type.to_string(), &item.summary);
-                let mut new_item = item.clone();
-                new_item.content_hash = hash;
-                MemoryItemRepo::insert(self, &new_item).await?;
-                info!("Inserted assistant response: {}", new_item.id);
-                Ok(new_item.id)
-            }
-            VersioningAction::NewFact { fact_type } => {
-                // User input with detected fact type
-                let fact_type_str = fact_type.as_str();
-
-                // Check if there's an existing active memory with this fact_type
-                if let Some(existing_active) = self
-                    .find_active_by_fact_type(&item.user_scope, fact_type_str)
-                    .await?
-                {
-                    // Deactivate the old memory
-                    self.deactivate_memory(&existing_active.id).await?;
-                    info!(
-                        "Deactivated old memory {} for fact_type={}",
-                        existing_active.id, fact_type_str
-                    );
-
-                    // Create new version with parent_id linking
-                    let hash = dedup::content_hash(&item.memory_type.to_string(), &item.summary);
-                    let new_id = Uuid::now_v7();
-                    let embedding_json = item
-                        .embedding
-                        .as_ref()
-                        .map(|v| convert::embedding_to_json(v.as_slice()));
-                    let model = memory_items::ActiveModel {
-                        id: Set(new_id),
-                        user_scope: Set(item.user_scope.clone()),
-                        resource_id: Set(item.resource_id),
-                        memory_type: Set(item.memory_type.to_string()),
-                        summary: Set(item.summary.clone()),
-                        embedding: Set(embedding_json),
-                        happened_at: Set(item.happened_at.into()),
-                        extra: Set(item.extra.clone()),
-                        content_hash: Set(hash),
-                        reinforcement_count: Set(0),
-                        created_at: Set(Utc::now().into()),
-                        updated_at: Set(Utc::now().into()),
-                        version: Set(existing_active.version + 1),
-                        parent_version_id: Set(Some(existing_active.id)),
-                        version_relation: Set(Some("Updates".to_string())),
-                        fact_type: Set(Some(fact_type_str.to_string())),
-                        is_active: Set(true),
-                        parent_id: Set(Some(existing_active.id)),
-                    };
-                    model.insert(&self.db).await?;
-                    info!(
-                        "Created new version {} of fact_type={} (parent={})",
-                        new_id, fact_type_str, existing_active.id
-                    );
-                    Ok(new_id)
-                } else {
-                    // No existing memory - insert as new fact
-                    let hash = dedup::content_hash(&item.memory_type.to_string(), &item.summary);
-                    let embedding_json = item
-                        .embedding
-                        .as_ref()
-                        .map(|v| convert::embedding_to_json(v.as_slice()));
-                    let model = memory_items::ActiveModel {
-                        id: Set(item.id),
-                        user_scope: Set(item.user_scope.clone()),
-                        resource_id: Set(item.resource_id),
-                        memory_type: Set(item.memory_type.to_string()),
-                        summary: Set(item.summary.clone()),
-                        embedding: Set(embedding_json),
-                        happened_at: Set(item.happened_at.into()),
-                        extra: Set(item.extra.clone()),
-                        content_hash: Set(hash),
-                        reinforcement_count: Set(0),
-                        created_at: Set(item.created_at.into()),
-                        updated_at: Set(item.updated_at.into()),
-                        version: Set(1),
-                        parent_version_id: Set(None),
-                        version_relation: Set(Some("Sets".to_string())),
-                        fact_type: Set(Some(fact_type_str.to_string())),
-                        is_active: Set(true),
-                        parent_id: Set(None),
-                    };
-                    model.insert(&self.db).await?;
-                    info!(
-                        "Inserted new fact memory: {} with fact_type={}",
-                        item.id, fact_type_str
-                    );
-                    Ok(item.id)
-                }
-            }
-            VersioningAction::NonFact => {
-                // User input without detected fact type
-                let hash = dedup::content_hash(&item.memory_type.to_string(), &item.summary);
-                let mut new_item = item.clone();
-                new_item.content_hash = hash;
-                MemoryItemRepo::insert(self, &new_item).await?;
-                info!("Inserted non-fact memory: {}", new_item.id);
-                Ok(new_item.id)
-            }
-            _ => {
-                // Other actions - insert as regular memory
-                let hash = dedup::content_hash(&item.memory_type.to_string(), &item.summary);
-                let mut new_item = item.clone();
-                new_item.content_hash = hash;
-                MemoryItemRepo::insert(self, &new_item).await?;
-                info!("Inserted memory: {}", new_item.id);
-                Ok(new_item.id)
-            }
-        }
-    }
-
-    /// Find active memory by `fact_type` for keyword-based retrieval
-    pub async fn find_active_by_fact_type(
-        &self,
-        user_scope: &str,
-        fact_type: &str,
-    ) -> anyhow::Result<Option<MemoryItem>> {
-        let result = memory_items::Entity::find()
-            .filter(memory_items::Column::UserScope.eq(user_scope))
-            .filter(memory_items::Column::FactType.eq(fact_type))
-            .filter(memory_items::Column::IsActive.eq(true))
-            .one(&self.db)
-            .await?;
-        Ok(result.map(convert::memory_item_from_model))
-    }
-
-    /// Deactivate a memory (set `is_active` to false)
-    async fn deactivate_memory(&self, id: &Uuid) -> anyhow::Result<()> {
-        let existing = memory_items::Entity::find_by_id(*id)
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("MemoryItem not found: {id}"))?;
-
-        let model = memory_items::ActiveModel {
-            id: Set(existing.id),
-            user_scope: Set(existing.user_scope.clone()),
-            resource_id: Set(existing.resource_id),
-            memory_type: Set(existing.memory_type.clone()),
-            summary: Set(existing.summary.clone()),
-            embedding: Set(existing.embedding.clone()),
-            happened_at: Set(existing.happened_at),
-            extra: Set(existing.extra.clone()),
-            content_hash: Set(existing.content_hash.clone()),
-            reinforcement_count: Set(existing.reinforcement_count),
-            created_at: Set(existing.created_at),
-            updated_at: Set(existing.updated_at),
-            version: Set(existing.version),
-            parent_version_id: Set(existing.parent_version_id),
-            version_relation: Set(existing.version_relation.clone()),
-            fact_type: Set(existing.fact_type.clone()),
-            is_active: Set(false),
-            parent_id: Set(existing.parent_id),
-        };
-        model.update(&self.db).await?;
-        Ok(())
-    }
 }
 
 #[async_trait]
@@ -358,9 +174,6 @@ impl MemoryItemRepo for MemoryManager {
             version: Set(item.version),
             parent_version_id: Set(item.parent_version_id),
             version_relation: Set(item.version_relation.clone()),
-            fact_type: Set(item.fact_type.clone()),
-            is_active: Set(item.is_active),
-            parent_id: Set(item.parent_id),
         };
         model.insert(&self.db).await?;
         Ok(())
@@ -409,9 +222,6 @@ impl MemoryItemRepo for MemoryManager {
             version: Set(existing.version + 1),
             parent_version_id: Set(Some(existing.id)),
             version_relation: Set(Some("Updates".to_string())),
-            fact_type: Set(item.fact_type.clone()),
-            is_active: Set(item.is_active),
-            parent_id: Set(item.parent_id),
         };
         model.update(&self.db).await?;
         Ok(())
@@ -430,7 +240,6 @@ impl MemoryItemRepo for MemoryManager {
     async fn list_by_scope(&self, user_scope: &str) -> anyhow::Result<Vec<MemoryItem>> {
         let results = memory_items::Entity::find()
             .filter(memory_items::Column::UserScope.eq(user_scope))
-            .filter(memory_items::Column::IsActive.eq(true))
             .all(&self.db)
             .await?;
         Ok(results
@@ -525,18 +334,6 @@ impl MemoryItemRepo for MemoryManager {
     ) -> anyhow::Result<Uuid> {
         self.semantic_upsert_memory(item, similarity_threshold)
             .await
-    }
-
-    async fn keyword_versioned_insert(&self, item: &MemoryItem) -> anyhow::Result<Uuid> {
-        self.keyword_versioned_insert(item).await
-    }
-
-    async fn find_active_by_fact_type(
-        &self,
-        user_scope: &str,
-        fact_type: &str,
-    ) -> anyhow::Result<Option<MemoryItem>> {
-        self.find_active_by_fact_type(user_scope, fact_type).await
     }
 }
 

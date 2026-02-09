@@ -53,12 +53,6 @@ pub struct MemoryItem {
     pub parent_version_id: Option<Uuid>,
     /// Version relation type (Sets, Updates, etc.)
     pub version_relation: Option<String>,
-    /// Fact type for versioned memories (address, nickname, etc.)
-    pub fact_type: Option<String>,
-    /// Whether this is the active version
-    pub is_active: bool,
-    /// Parent memory ID for version chain
-    pub parent_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone)]

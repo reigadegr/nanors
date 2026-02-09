@@ -39,9 +39,6 @@ pub fn memory_item_from_model(m: memory_items::Model) -> MemoryItem {
         version: m.version,
         parent_version_id: m.parent_version_id,
         version_relation: m.version_relation,
-        fact_type: m.fact_type,
-        is_active: m.is_active,
-        parent_id: m.parent_id,
     }
 }
 

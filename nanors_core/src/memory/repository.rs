@@ -61,44 +61,6 @@ pub trait MemoryItemRepo: Send + Sync {
         item: &MemoryItem,
         similarity_threshold: f64,
     ) -> anyhow::Result<Uuid>;
-
-    /// Insert or update a memory item using keyword-triggered versioning.
-    ///
-    /// This method implements rule-based memory versioning without LLM:
-    /// 1. Analyzes the memory to detect fact type using keywords
-    /// 2. If it's an assistant response, just store it (no versioning)
-    /// 3. If it's a user input with a fact type:
-    ///    - Find existing active memory with same `fact_type`
-    ///    - Mark old memory as inactive
-    ///    - Create new version marked as active
-    /// 4. Otherwise store as non-fact memory
-    ///
-    /// # Arguments
-    /// * `item` - The memory item to insert or use for update
-    ///
-    /// # Returns
-    /// * `Ok(uuid)` - ID of the inserted or updated memory
-    /// * `Err(e)` - Error if operation fails
-    async fn keyword_versioned_insert(&self, item: &MemoryItem) -> anyhow::Result<Uuid>;
-
-    /// Find active memory by fact type for keyword-based retrieval.
-    ///
-    /// Returns the most recent active memory with the given fact_type.
-    /// This is used for keyword-based fact lookup in retrieval.
-    ///
-    /// # Arguments
-    /// * `user_scope` - The user scope to search in
-    /// * `fact_type` - The fact type to look for (e.g., "address", "nickname")
-    ///
-    /// # Returns
-    /// * `Ok(Some(memory))` - If an active memory with this fact_type exists
-    /// * `Ok(None)` - If no active memory with this fact_type exists
-    /// * `Err(e)` - Error if operation fails
-    async fn find_active_by_fact_type(
-        &self,
-        user_scope: &str,
-        fact_type: &str,
-    ) -> anyhow::Result<Option<MemoryItem>>;
 }
 
 #[async_trait]
