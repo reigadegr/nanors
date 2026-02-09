@@ -1404,6 +1404,7 @@ dependencies = [
  "nanors_core",
  "nanors_entities",
  "rayon",
+ "regex",
  "sea-orm",
  "serde",
  "serde_json",

@@ -29,6 +29,26 @@ pub trait MemoryItemRepo: Send + Sync {
         top_k: usize,
     ) -> anyhow::Result<Vec<SalienceScore<MemoryItem>>>;
 
+    /// Enhanced search with question detection and card lookup.
+    ///
+    /// This method provides improved retrieval by:
+    /// - Detecting question type for specialized strategies
+    /// - Expanding queries for better recall
+    /// - Looking up structured cards for O(1) fact retrieval
+    ///
+    /// Default implementation falls back to `search_by_embedding`.
+    async fn search_enhanced(
+        &self,
+        user_scope: &str,
+        query_embedding: &[f32],
+        query_text: &str,
+        top_k: usize,
+    ) -> anyhow::Result<Vec<SalienceScore<MemoryItem>>> {
+        // Default implementation: just use standard vector search
+        self.search_by_embedding(user_scope, query_embedding, query_text, top_k)
+            .await
+    }
+
     /// Backfill embeddings for items that don't have them.
     /// Returns the number of items updated.
     async fn backfill_embeddings(

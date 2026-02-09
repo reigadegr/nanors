@@ -15,14 +15,33 @@
     clippy::missing_safety_doc,
     clippy::missing_panics_doc,
     clippy::missing_errors_doc,
-    clippy::cast_precision_loss
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation
 )]
 
 mod convert;
 mod dedup;
+mod enrichment;
+mod extraction;
 mod manager;
+mod query;
+mod schema;
 mod scoring;
+mod temporal;
 
 pub use dedup::content_hash;
+pub use enrichment::{
+    DatabaseEnrichmentRepository, EngineStamp, EnrichmentManifest, EnrichmentParams,
+    EnrichmentRecord, EnrichmentRepository,
+};
+pub use extraction::{
+    CardKind, CardRepository, DatabaseCardRepository, ExtractionConfig, ExtractionEngine,
+    MemoryCard, Polarity, VersionRelation,
+};
 pub use manager::MemoryManager;
+pub use query::{QueryExpander, QuestionType, QuestionTypeDetector};
+pub use schema::{Cardinality, PredicateSchema, SchemaError, SchemaRegistry, ValueType};
 pub use scoring::{compute_salience, cosine_similarity};
+pub use temporal::{
+    CardRepositoryTemporal, DatabaseCardRepositoryTemporal, TimeTravelQuery, TimelineEntry,
+};

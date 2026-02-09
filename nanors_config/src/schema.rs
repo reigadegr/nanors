@@ -42,6 +42,10 @@ pub struct MemoryConfig {
     pub default_user_scope: String,
     #[serde(default)]
     pub retrieval: RetrievalConfig,
+    #[serde(default)]
+    pub extraction: ExtractionConfig,
+    #[serde(default)]
+    pub query: QueryConfig,
 }
 
 impl Default for MemoryConfig {
@@ -50,6 +54,8 @@ impl Default for MemoryConfig {
             enabled: false,
             default_user_scope: Self::default_user_scope(),
             retrieval: RetrievalConfig::default(),
+            extraction: ExtractionConfig::default(),
+            query: QueryConfig::default(),
         }
     }
 }
@@ -57,6 +63,78 @@ impl Default for MemoryConfig {
 impl MemoryConfig {
     fn default_user_scope() -> String {
         "default".to_string()
+    }
+}
+
+/// Configuration for structured memory extraction.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ExtractionConfig {
+    /// Enable automatic extraction of structured memory cards.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Minimum confidence threshold for storing extracted cards.
+    #[serde(default = "ExtractionConfig::default_min_confidence")]
+    pub min_confidence: f32,
+    /// Extract cards when storing new memories.
+    #[serde(default = "ExtractionConfig::default_extract_on_store")]
+    pub extract_on_store: bool,
+}
+
+impl Default for ExtractionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            min_confidence: Self::default_min_confidence(),
+            extract_on_store: Self::default_extract_on_store(),
+        }
+    }
+}
+
+impl ExtractionConfig {
+    const fn default_min_confidence() -> f32 {
+        0.3
+    }
+
+    const fn default_extract_on_store() -> bool {
+        true
+    }
+}
+
+/// Configuration for query analysis and expansion.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct QueryConfig {
+    /// Enable question type detection.
+    #[serde(default = "QueryConfig::default_detection_enabled")]
+    pub detection_enabled: bool,
+    /// Enable query expansion for better recall.
+    #[serde(default = "QueryConfig::default_expansion_enabled")]
+    pub expansion_enabled: bool,
+    /// Minimum tokens to apply OR query expansion.
+    #[serde(default = "QueryConfig::default_min_or_tokens")]
+    pub min_or_tokens: usize,
+}
+
+impl Default for QueryConfig {
+    fn default() -> Self {
+        Self {
+            detection_enabled: true,
+            expansion_enabled: true,
+            min_or_tokens: Self::default_min_or_tokens(),
+        }
+    }
+}
+
+impl QueryConfig {
+    const fn default_detection_enabled() -> bool {
+        true
+    }
+
+    const fn default_expansion_enabled() -> bool {
+        true
+    }
+
+    const fn default_min_or_tokens() -> usize {
+        2
     }
 }
 
@@ -147,6 +225,16 @@ impl Config {
                     items_top_k: 10,
                     context_target_length: 2000,
                 },
+                extraction: ExtractionConfig {
+                    enabled: true,
+                    min_confidence: 0.5,
+                    extract_on_store: true,
+                },
+                query: QueryConfig {
+                    detection_enabled: true,
+                    expansion_enabled: true,
+                    min_or_tokens: 2,
+                },
             },
         };
 
@@ -155,6 +243,10 @@ impl Config {
 
         println!("Created config file at: {}", config_path.display());
         println!("Please edit it and add your Zhipu API key.");
+        println!("Configuration includes:");
+        println!("  - Structured memory extraction (enabled by default)");
+        println!("  - Question type detection (enabled by default)");
+        println!("  - Query expansion (enabled by default)");
         Ok(())
     }
 }

@@ -194,8 +194,9 @@ where
             }
         };
 
+        // Try to use enhanced search if available, fall back to standard search
         let Ok(items) = memory_manager
-            .search_by_embedding(
+            .search_enhanced(
                 &self.user_scope,
                 &query_embedding,
                 query,
