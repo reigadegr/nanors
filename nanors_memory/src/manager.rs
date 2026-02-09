@@ -317,9 +317,18 @@ impl MemoryItemRepo for MemoryManager {
             std::cmp::Ordering::Equal => b.score.total_cmp(&a.score),
             other => other,
         });
-        filtered_scores.truncate(top_k);
 
-        Ok(filtered_scores)
+        // Deduplicate: keep only the highest-similarity item for each unique summary
+        let mut deduped = Vec::new();
+        let mut seen_summaries = std::collections::HashSet::new();
+        for score in filtered_scores {
+            if seen_summaries.insert(score.item.summary.clone()) {
+                deduped.push(score);
+            }
+        }
+        deduped.truncate(top_k);
+
+        Ok(deduped)
     }
 
     async fn backfill_embeddings(
