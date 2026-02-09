@@ -11,6 +11,22 @@ use crate::{
     retrieval::{AdaptiveConfig, CategoryCompressor, SufficiencyChecker, find_adaptive_cutoff},
 };
 
+/// Format a timestamp as a human-readable "time ago" string
+fn time_ago_since(timestamp: chrono::DateTime<chrono::Utc>) -> String {
+    let now = chrono::Utc::now();
+    let duration = now.signed_duration_since(timestamp);
+
+    if duration.num_days() > 0 {
+        format!("{}天前", duration.num_days())
+    } else if duration.num_hours() > 0 {
+        format!("{}小时前", duration.num_hours())
+    } else if duration.num_minutes() > 0 {
+        format!("{}分钟前", duration.num_minutes())
+    } else {
+        "刚刚".to_string()
+    }
+}
+
 /// Tiered retrieval configuration based on memU's approach
 #[expect(
     clippy::struct_excessive_bools,
@@ -296,11 +312,20 @@ where
         };
 
         info!("Tier 1: Retrieved {} categories", categories.len());
-        for cat_score in categories {
+
+        // Sort categories by recency
+        let mut sorted_categories = categories;
+        sorted_categories.sort_by_key(|b| std::cmp::Reverse(b.item.updated_at));
+
+        for cat_score in sorted_categories {
+            let time_ago = time_ago_since(cat_score.item.updated_at);
             let text = if let Some(summary) = &cat_score.item.summary {
-                format!("Category: {} - {}", cat_score.item.name, summary)
+                format!(
+                    "Category: {} - {} [{}]",
+                    cat_score.item.name, summary, time_ago
+                )
             } else {
-                format!("Category: {}", cat_score.item.name)
+                format!("Category: {} [{}]", cat_score.item.name, time_ago)
             };
             *total_length = Self::add_context_part(
                 context_parts,
@@ -353,8 +378,15 @@ where
         };
 
         info!("Tier 2: Retrieved {} items", items.len());
+
+        // Sort by recency first (most recent first) to ensure newer memories appear earlier
+        let mut items = items;
+        items.sort_by_key(|b| std::cmp::Reverse(b.item.happened_at));
+
         for item_score in &items {
-            let text = format!("- {}", item_score.item.summary);
+            // Format with timestamp for recency awareness
+            let time_ago = time_ago_since(item_score.item.happened_at);
+            let text = format!("- [{}] {}", time_ago, item_score.item.summary);
             *total_length = Self::add_context_part(
                 context_parts,
                 text,
@@ -409,13 +441,19 @@ where
         };
 
         info!("Tier 3: Retrieved {} resources", resources.len());
-        for res_score in resources {
+
+        // Sort resources by recency
+        let mut resources = resources;
+        resources.sort_by_key(|b| std::cmp::Reverse(b.item.created_at));
+
+        for res_score in &resources {
             let caption = res_score
                 .item
                 .caption
                 .as_deref()
                 .unwrap_or("Untitled resource");
-            let text = format!("[Resource: {caption}]");
+            let time_ago = time_ago_since(res_score.item.created_at);
+            let text = format!("[Resource: {caption} ({time_ago})]");
             *total_length = Self::add_context_part(
                 context_parts,
                 text,
@@ -522,8 +560,15 @@ where
             total_length, self.retrieval_config.context_target_length
         );
 
+        // Log the actual memory context being sent to LLM (for debugging)
+        info!("=== Memory Context ({} items) ===", context_parts.len());
+        for (i, part) in context_parts.iter().enumerate() {
+            info!("  [{}] {}", i + 1, part);
+        }
+        info!("=== End Memory Context ===");
+
         format!(
-            "You are a helpful AI assistant with memory of past conversations.\n\nHere are relevant memories from previous conversations:\n{memory_context}\n\nUse this context to provide better, more personalized responses."
+            "You are a helpful AI assistant with memory of past conversations.\n\nHere are relevant memories from previous conversations (in chronological order, most recent first):\n{memory_context}\n\nCRITICAL RULE: Each memory shows when it was recorded (e.g., \"[1天前]\"). When memories contain conflicting information, ALWAYS trust and use the MOST RECENT memory. People's situations change - they move houses, change jobs, update preferences. A memory from \"1小时前\" overrides one from \"7天前\".\n\nExamples of conflict resolution:\n- If memory says \"[1天前] User: 我搬到了石家庄\" and \"[7天前] User: 我住在丰台\", the CORRECT answer is 石家庄\n- If memory says \"[2小时前] User: 我换了工作\" and \"[1个月前] User: 我是工程师\", use the NEW information\n\nUse this context to provide better, more personalized responses."
         )
     }
 
@@ -544,19 +589,18 @@ where
     }
 
     /// Save interaction to memory storage with embeddings
-    async fn save_to_memory_with_embeddings(&self, content: &str, response: &crate::LLMResponse) {
+    async fn save_to_memory_with_embeddings(&self, content: &str, _response: &crate::LLMResponse) {
         if let Some(memory) = &self.memory_manager {
             let now = chrono::Utc::now();
 
-            // Generate embeddings for both user and assistant messages
-            let (user_embedding, assistant_embedding) = match tokio::join!(
-                self.provider.embed(content),
-                self.provider.embed(&response.content)
-            ) {
-                (Ok(u), Ok(a)) => (Some(u), Some(a)),
-                (Err(e), _) | (_, Err(e)) => {
-                    debug!("Failed to generate embeddings: {e}");
-                    (None, None)
+            // Only store user messages as memories - assistant responses are just outputs,
+            // not facts. Storing assistant responses can cause confusion when they contain
+            // incorrect information that gets retrieved later.
+            let user_embedding = match self.provider.embed(content).await {
+                Ok(embedding) => Some(embedding),
+                Err(e) => {
+                    debug!("Failed to generate user embedding: {e}");
+                    None
                 }
             };
 
@@ -578,47 +622,17 @@ where
                 version_relation: None,
             };
 
-            match memory.insert(&user_memory).await {
-                Ok(()) => {
-                    debug!("Stored user memory: {}", user_memory.id);
+            // Use semantic upsert to handle fact updates (e.g., location changes)
+            match memory.semantic_upsert(&user_memory, 0.85).await {
+                Ok(id) => {
+                    debug!("Stored user memory: {}", id);
                 }
                 Err(e) => {
                     debug!("Failed to store user memory: {e}");
                 }
             }
 
-            let response_summary = format!("Assistant: {}", response.content);
-            let assistant_memory = MemoryItem {
-                id: Uuid::now_v7(),
-                user_scope: self.user_scope.clone(),
-                resource_id: None,
-                memory_type: MemoryType::Episodic,
-                summary: response_summary.clone(),
-                embedding: assistant_embedding,
-                happened_at: now,
-                extra: None,
-                content_hash: format!(
-                    "{:x}",
-                    sha2::Sha256::digest(format!("episodic:{response_summary}"))
-                ),
-                reinforcement_count: 0,
-                created_at: now,
-                updated_at: now,
-                version: 1,
-                parent_version_id: None,
-                version_relation: None,
-            };
-
-            match memory.insert(&assistant_memory).await {
-                Ok(()) => {
-                    debug!("Stored assistant memory: {}", assistant_memory.id);
-                }
-                Err(e) => {
-                    debug!("Failed to store assistant memory: {e}");
-                }
-            }
-
-            debug!("Stored interaction as memories");
+            debug!("Stored user message as memory");
 
             // Trigger category compression if enabled
             if self.retrieval_config.enable_category_compression {
