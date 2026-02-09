@@ -88,7 +88,7 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
 /// When these appear in memory, and the query also contains them, the memory
 /// should be penalized to avoid retrieving questions instead of answers.
 const QUESTION_KEYWORDS: &[&str] = &[
-    "哪",
+    // Standard question words
     "什么",
     "谁",
     "多少",
@@ -98,7 +98,18 @@ const QUESTION_KEYWORDS: &[&str] = &[
     "为啥",
     "吗",
     "是不是",
+    "是否",
     "呢",
+    // Location questions (combined to avoid substring overlap)
+    "哪儿",
+    "哪里",
+    // Colloquial question words (use compound words to avoid substring overlap)
+    "干啥",
+    "咋",
+    // Time/quantity questions
+    "几",
+    "几时",
+    "何时",
 ];
 
 /// Detect if text contains Chinese question keywords.
@@ -213,10 +224,12 @@ mod tests {
 
     #[test]
     fn count_question_keywords_counts_unique_keywords() {
-        assert_eq!(count_question_keywords("我住哪"), 1);
-        assert_eq!(count_question_keywords("你住在哪里呢"), 2); // 哪, 呢
+        assert_eq!(count_question_keywords("我住哪里"), 1); // 哪里
+        assert_eq!(count_question_keywords("你住在哪儿呢"), 2); // 哪儿, 呢
         assert_eq!(count_question_keywords("这是什么"), 1); // 什么
         assert_eq!(count_question_keywords("谁有多少钱"), 2); // 谁, 多少
+        assert_eq!(count_question_keywords("我12月6号干啥去了"), 1); // 干啥
+        assert_eq!(count_question_keywords("咋回事"), 1); // 咋
         assert_eq!(count_question_keywords("我住西城区"), 0);
         assert_eq!(count_question_keywords("我喜欢吃苹果"), 0);
     }
@@ -231,28 +244,28 @@ mod tests {
     #[test]
     fn question_penalty_no_penalty_when_only_query_has_keywords() {
         // Query has question keyword, memory doesn't
-        let penalty = question_penalty("我住哪", "User: 我住西城区");
+        let penalty = question_penalty("我住哪里", "User: 我住西城区");
         assert!((penalty - 1.0).abs() < 1e-9);
     }
 
     #[test]
     fn question_penalty_no_penalty_when_only_memory_has_keywords() {
         // Memory has question keyword, query doesn't
-        let penalty = question_penalty("我住西城区", "User: 你住哪里");
+        let penalty = question_penalty("我住西城区", "User: 你住哪儿呢");
         assert!((penalty - 1.0).abs() < 1e-9);
     }
 
     #[test]
     fn question_penalty_applies_when_both_have_keywords() {
         // Both have 1 question keyword each - 50% penalty
-        let penalty = question_penalty("我住哪", "User: 你住哪里");
+        let penalty = question_penalty("我住哪里", "User: 你住哪儿");
         assert!((penalty - 0.50).abs() < 1e-9); // 1.0 - 1*1*0.50 = 0.50
     }
 
     #[test]
     fn question_penalty_multiple_keywords_in_both() {
-        // Query has 2 keywords, memory has 1 keyword - 100% penalty (capped)
-        let penalty = question_penalty("我住在哪里呢", "User: 你住哪");
+        // Query has 2 keywords (哪里, 呢), memory has 1 keyword (干啥) - 100% penalty (capped)
+        let penalty = question_penalty("我住在哪里呢", "User: 我12月6号干啥去了");
         assert!((penalty - 0.0).abs() < 1e-9); // 1.0 - 2*1*0.50 = 0.0 (capped at 0)
     }
 

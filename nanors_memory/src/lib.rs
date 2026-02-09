@@ -25,6 +25,7 @@ mod enrichment;
 mod extraction;
 mod manager;
 mod query;
+pub mod rerank;
 mod schema;
 mod scoring;
 mod temporal;
@@ -40,6 +41,7 @@ pub use extraction::{
 };
 pub use manager::MemoryManager;
 pub use query::{QueryExpander, QuestionType, QuestionTypeDetector};
+pub use rerank::{NoOpReranker, Reranker, RuleBasedReranker};
 pub use schema::{Cardinality, PredicateSchema, SchemaError, SchemaRegistry, ValueType};
 pub use scoring::{compute_salience, cosine_similarity};
 pub use temporal::{

@@ -46,6 +46,8 @@ pub struct MemoryConfig {
     pub extraction: ExtractionConfig,
     #[serde(default)]
     pub query: QueryConfig,
+    #[serde(default)]
+    pub rerank: RerankConfig,
 }
 
 impl Default for MemoryConfig {
@@ -56,6 +58,7 @@ impl Default for MemoryConfig {
             retrieval: RetrievalConfig::default(),
             extraction: ExtractionConfig::default(),
             query: QueryConfig::default(),
+            rerank: RerankConfig::default(),
         }
     }
 }
@@ -135,6 +138,52 @@ impl QueryConfig {
 
     const fn default_min_or_tokens() -> usize {
         2
+    }
+}
+
+/// Configuration for result reranking.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct RerankConfig {
+    /// Enable reranking of search results.
+    #[serde(default = "RerankConfig::default_enabled")]
+    pub enabled: bool,
+    /// Weight for keyword matching boost (0.0-1.0).
+    #[serde(default = "RerankConfig::default_keyword_weight")]
+    pub keyword_weight: f64,
+    /// Weight for recency boost (0.0-1.0).
+    #[serde(default = "RerankConfig::default_recency_weight")]
+    pub recency_weight: f64,
+    /// Weight for profile fact boost (0.0-1.0).
+    #[serde(default = "RerankConfig::default_profile_weight")]
+    pub profile_weight: f64,
+}
+
+impl Default for RerankConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            keyword_weight: Self::default_keyword_weight(),
+            recency_weight: Self::default_recency_weight(),
+            profile_weight: Self::default_profile_weight(),
+        }
+    }
+}
+
+impl RerankConfig {
+    const fn default_enabled() -> bool {
+        true
+    }
+
+    const fn default_keyword_weight() -> f64 {
+        0.2
+    }
+
+    const fn default_recency_weight() -> f64 {
+        0.15
+    }
+
+    const fn default_profile_weight() -> f64 {
+        0.25
     }
 }
 
@@ -234,6 +283,12 @@ impl Config {
                     detection_enabled: true,
                     expansion_enabled: true,
                     min_or_tokens: 2,
+                },
+                rerank: RerankConfig {
+                    enabled: true,
+                    keyword_weight: 0.2,
+                    recency_weight: 0.15,
+                    profile_weight: 0.25,
                 },
             },
         };

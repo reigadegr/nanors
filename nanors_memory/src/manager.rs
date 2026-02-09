@@ -16,6 +16,7 @@ use crate::dedup;
 use crate::enrichment::EnrichmentManifest;
 use crate::extraction::{CardRepository, DatabaseCardRepository};
 use crate::query::{QueryExpander, QuestionType, QuestionTypeDetector};
+use crate::rerank::{Reranker, RuleBasedReranker};
 use crate::scoring;
 
 pub struct MemoryManager {
@@ -24,6 +25,7 @@ pub struct MemoryManager {
     question_detector: QuestionTypeDetector,
     query_expander: QueryExpander,
     enrichment_manifest: EnrichmentManifest,
+    reranker: Box<dyn Reranker>,
 }
 
 impl MemoryManager {
@@ -38,6 +40,51 @@ impl MemoryManager {
             question_detector: QuestionTypeDetector::with_defaults(),
             query_expander: QueryExpander::with_defaults(),
             enrichment_manifest,
+            reranker: Box::new(RuleBasedReranker::new()),
+        })
+    }
+
+    /// Create a new `MemoryManager` with a custom reranker.
+    ///
+    /// # Arguments
+    /// * `database_url` - Database connection string
+    /// * `reranker` - Custom reranker implementation
+    ///
+    /// # Example
+    /// ```no_run
+    /// use nanors_memory::MemoryManager;
+    /// use nanors_memory::rerank::{NoOpReranker, RuleBasedReranker};
+    ///
+    /// # async fn example() -> anyhow::Result<()> {
+    /// // With rule-based reranker (default)
+    /// let manager = MemoryManager::with_reranker(
+    ///     "postgresql://...",
+    ///     RuleBasedReranker::new()
+    /// ).await?;
+    ///
+    /// // With no-op reranker (disabled)
+    /// let manager = MemoryManager::with_reranker(
+    ///     "postgresql://...",
+    ///     NoOpReranker
+    /// ).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn with_reranker<R>(database_url: &str, reranker: R) -> anyhow::Result<Self>
+    where
+        R: Reranker + 'static,
+    {
+        info!("Connecting to database for MemoryManager");
+        let db = Database::connect(database_url).await?;
+        let enrichment_manifest = EnrichmentManifest::with_database(db.clone());
+        info!("MemoryManager initialized with custom reranker");
+        Ok(Self {
+            db: db.clone(),
+            card_repo: DatabaseCardRepository::new(db),
+            question_detector: QuestionTypeDetector::with_defaults(),
+            query_expander: QueryExpander::with_defaults(),
+            enrichment_manifest,
+            reranker: Box::new(reranker),
         })
     }
 
@@ -504,7 +551,10 @@ impl MemoryManager {
         // Step 4: Apply question-type-specific ranking adjustments
         results = Self::rank_by_question_type(results, question_type, query_text);
 
-        // Step 5: If results are sparse, try query expansion
+        // Step 5: Apply reranking for improved relevance
+        results = self.reranker.rerank(results, query_text);
+
+        // Step 7: If results are sparse, try query expansion
         if results.len() < top_k / 2 {
             if let Some(expanded_query) = self.query_expander.expand_or(query_text) {
                 info!("Expanding query with OR: {}", expanded_query);
@@ -515,7 +565,7 @@ impl MemoryManager {
             }
         }
 
-        // Apply card boost if found
+        // Step 8: Apply card boost if found
         if let Some(boosted_memory) = card_boost {
             // Ensure the boosted memory is in results
             if !results.iter().any(|r| r.item.id == boosted_memory.item.id) {
