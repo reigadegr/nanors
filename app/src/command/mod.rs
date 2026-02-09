@@ -8,7 +8,6 @@ use nanors_config::Config;
 use nanors_core::AgentLoop;
 use nanors_memory::MemoryManager;
 use nanors_providers::ZhipuProvider;
-use nanors_session::SessionManager;
 use std::sync::Arc;
 use tracing::info;
 
@@ -17,15 +16,16 @@ mod info;
 mod init;
 mod version;
 
-/// Set up memory agent with retrieval.
+/// Set up memory storage (semantic retrieval) for agent.
 ///
-/// This is a shared utility function used by the `AgentStrategy`.
-async fn setup_memory_agent(
+/// `MemoryManager` already provides `SessionStorage`, so we only need to add
+/// memory retrieval capabilities through Arc<dyn MemoryItemRepo>.
+fn setup_memory_storage(
     config: &Config,
-    agent: AgentLoop<ZhipuProvider, SessionManager>,
-) -> anyhow::Result<AgentLoop<ZhipuProvider, SessionManager>> {
-    info!("Memory feature enabled, initializing MemoryManager");
-    let memory_manager = Arc::new(MemoryManager::new(&config.database.url).await?);
+    agent: AgentLoop<ZhipuProvider, Arc<MemoryManager>>,
+    memory_manager: Arc<MemoryManager>,
+) -> AgentLoop<ZhipuProvider, Arc<MemoryManager>> {
+    info!("Memory feature enabled, setting up memory retrieval");
     let user_scope = config.memory.default_user_scope.clone();
 
     let retrieval_config = config.memory.retrieval.clone();
@@ -35,9 +35,12 @@ async fn setup_memory_agent(
         retrieval_config.items_top_k, retrieval_config.context_target_length
     );
 
-    Ok(agent
-        .with_memory(memory_manager, user_scope)
-        .with_retrieval_config(retrieval_config))
+    // Cast to Arc<dyn MemoryItemRepo> for with_memory
+    let memory_repo: Arc<dyn nanors_core::MemoryItemRepo> = memory_manager;
+
+    agent
+        .with_memory(memory_repo, user_scope)
+        .with_retrieval_config(retrieval_config)
 }
 
 pub use agent::{AgentInput, AgentStrategy};

@@ -22,6 +22,7 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub mod agent;
@@ -75,6 +76,18 @@ pub trait LLMProvider: Send + Sync {
 pub trait SessionStorage: Send + Sync {
     async fn get_or_create(&self, id: &Uuid) -> anyhow::Result<Session>;
     async fn add_message(&self, id: &Uuid, role: Role, content: &str) -> anyhow::Result<()>;
+}
+
+// Blanket implementation for Arc<T> where T implements SessionStorage
+#[async_trait]
+impl<T: SessionStorage + ?Sized> SessionStorage for Arc<T> {
+    async fn get_or_create(&self, id: &Uuid) -> anyhow::Result<Session> {
+        self.as_ref().get_or_create(id).await
+    }
+
+    async fn add_message(&self, id: &Uuid, role: Role, content: &str) -> anyhow::Result<()> {
+        self.as_ref().add_message(id, role, content).await
+    }
 }
 
 #[derive(Debug, Clone)]

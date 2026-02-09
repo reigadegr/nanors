@@ -1,14 +1,18 @@
 use async_trait::async_trait;
 use chrono::Utc;
-use nanors_core::MemoryItemRepo;
 use nanors_core::memory::{MemoryItem, SalienceScore};
+use nanors_core::{
+    ChatMessage, ConversationSegment, ConversationSegmenter, MemoryItemRepo, Role, Session,
+    SessionStorage,
+};
 use nanors_entities::memory_items;
+use nanors_entities::sessions;
 use rayon::prelude::*;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Database, DatabaseConnection, EntityTrait, ModelTrait,
     QueryFilter, Set,
 };
-use tracing::info;
+use tracing::{debug, info};
 use uuid::Uuid;
 
 use crate::convert;
@@ -26,6 +30,7 @@ pub struct MemoryManager {
     query_expander: QueryExpander,
     enrichment_manifest: EnrichmentManifest,
     reranker: Box<dyn Reranker>,
+    segmenter: Option<Box<dyn ConversationSegmenter>>,
 }
 
 impl MemoryManager {
@@ -41,6 +46,7 @@ impl MemoryManager {
             query_expander: QueryExpander::with_defaults(),
             enrichment_manifest,
             reranker: Box::new(RuleBasedReranker::new()),
+            segmenter: None,
         })
     }
 
@@ -85,6 +91,7 @@ impl MemoryManager {
             query_expander: QueryExpander::with_defaults(),
             enrichment_manifest,
             reranker: Box::new(reranker),
+            segmenter: None,
         })
     }
 
@@ -110,6 +117,54 @@ impl MemoryManager {
     #[must_use]
     pub const fn enrichment_manifest(&self) -> &EnrichmentManifest {
         &self.enrichment_manifest
+    }
+
+    /// Set a conversation segmenter for automatic conversation segmentation
+    #[must_use]
+    pub fn with_segmenter(mut self, segmenter: Box<dyn ConversationSegmenter>) -> Self {
+        self.segmenter = Some(segmenter);
+        self
+    }
+
+    /// Clear a session by ID.
+    pub async fn clear_session(&self, id: &Uuid) -> anyhow::Result<()> {
+        sessions::Entity::delete_by_id(*id).exec(&self.db).await?;
+
+        info!("Cleared session: {}", id);
+        Ok(())
+    }
+
+    /// List all session IDs.
+    pub async fn list_sessions(&self) -> anyhow::Result<Vec<Uuid>> {
+        let session_models = sessions::Entity::find().all(&self.db).await?;
+
+        Ok(session_models.into_iter().map(|s| s.id).collect())
+    }
+
+    /// Segment a conversation into smaller parts for processing.
+    pub async fn segment_conversation(
+        &self,
+        session_id: &Uuid,
+    ) -> anyhow::Result<Vec<ConversationSegment>> {
+        let session = self.get_or_create(session_id).await?;
+
+        if let Some(segmenter) = &self.segmenter {
+            let config = segmenter.config();
+            let segments = segmenter
+                .segment(session_id, &session.messages, config)
+                .await?;
+
+            info!(
+                "Created {} segments for session {}",
+                segments.len(),
+                session_id
+            );
+
+            Ok(segments)
+        } else {
+            debug!("No segmenter configured, returning empty segments");
+            Ok(vec![])
+        }
     }
 
     /// Insert or update a memory item with deduplication.
@@ -496,6 +551,72 @@ impl MemoryItemRepo for MemoryManager {
     }
 }
 
+#[async_trait]
+impl SessionStorage for MemoryManager {
+    async fn get_or_create(&self, id: &Uuid) -> anyhow::Result<Session> {
+        let session_model = sessions::Entity::find_by_id(*id).one(&self.db).await?;
+
+        if let Some(model) = session_model {
+            let messages: Vec<ChatMessage> = serde_json::from_str(&model.messages)?;
+
+            Ok(Session {
+                id: model.id,
+                messages,
+                created_at: model.created_at.and_utc(),
+                updated_at: model.updated_at.and_utc(),
+            })
+        } else {
+            let now = chrono::Utc::now();
+            Ok(Session {
+                id: *id,
+                messages: vec![],
+                created_at: now,
+                updated_at: now,
+            })
+        }
+    }
+
+    async fn add_message(&self, id: &Uuid, role: Role, content: &str) -> anyhow::Result<()> {
+        let now = chrono::Utc::now().naive_utc();
+
+        if let Some(model) = sessions::Entity::find_by_id(*id).one(&self.db).await? {
+            let mut messages: Vec<ChatMessage> = serde_json::from_str(&model.messages)?;
+            messages.push(ChatMessage {
+                role,
+                content: content.to_string(),
+            });
+            let messages_json = serde_json::to_string(&messages)?;
+
+            sessions::Entity::update(sessions::ActiveModel {
+                id: Set(model.id),
+                messages: Set(messages_json),
+                created_at: Set(model.created_at),
+                updated_at: Set(now),
+            })
+            .exec(&self.db)
+            .await?;
+        } else {
+            let messages = vec![ChatMessage {
+                role,
+                content: content.to_string(),
+            }];
+            let messages_json = serde_json::to_string(&messages)?;
+
+            sessions::ActiveModel {
+                id: Set(*id),
+                messages: Set(messages_json),
+                created_at: Set(now),
+                updated_at: Set(now),
+            }
+            .insert(&self.db)
+            .await?;
+        }
+
+        info!("Added message to session: {}", id);
+        Ok(())
+    }
+}
+
 // Additional impl block for MemoryManager with new features
 impl MemoryManager {
     /// Enhanced search with query expansion and structured card lookup.
@@ -688,5 +809,93 @@ impl MemoryManager {
                 score
             })
             .collect()
+    }
+}
+
+// Additional impl block for temporal queries
+impl MemoryManager {
+    /// Get the value of an entity:slot at a specific point in time.
+    ///
+    /// This enables "time travel" to see what values were effective at any moment
+    /// in the past.
+    ///
+    /// # Arguments
+    /// * `user_scope` - User namespace
+    /// * `entity` - Entity name (e.g., "user")
+    /// * `slot` - Slot name (e.g., "location")
+    /// * `query_time` - Point in time to query
+    ///
+    /// # Returns
+    /// The most recent non-retracted card at the given time, or None if no card existed.
+    pub async fn get_card_at_time(
+        &self,
+        user_scope: &str,
+        entity: &str,
+        slot: &str,
+        query_time: chrono::DateTime<chrono::Utc>,
+    ) -> anyhow::Result<Option<crate::extraction::MemoryCard>> {
+        let temporal_repo = crate::temporal::DatabaseCardRepositoryTemporal::new(self.db.clone());
+        Ok(crate::temporal::TimeTravelQuery::get_at_time(
+            &temporal_repo,
+            user_scope,
+            entity,
+            slot,
+            query_time,
+        )
+        .await)
+    }
+
+    /// Get the timeline of values for an entity:slot.
+    ///
+    /// Returns all cards in chronological order, showing how the value
+    /// changed over time.
+    ///
+    /// # Arguments
+    /// * `user_scope` - User namespace
+    /// * `entity` - Entity name (e.g., "user")
+    /// * `slot` - Slot name (e.g., "location")
+    ///
+    /// # Returns
+    /// Timeline entries in chronological order.
+    pub async fn get_card_timeline(
+        &self,
+        user_scope: &str,
+        entity: &str,
+        slot: &str,
+    ) -> anyhow::Result<Vec<crate::temporal::TimelineEntry>> {
+        let temporal_repo = crate::temporal::DatabaseCardRepositoryTemporal::new(self.db.clone());
+        Ok(
+            crate::temporal::TimeTravelQuery::get_timeline(
+                &temporal_repo,
+                user_scope,
+                entity,
+                slot,
+            )
+            .await,
+        )
+    }
+
+    /// Get the current (most recent) value for an entity:slot.
+    ///
+    /// This is equivalent to `get_card_at_time` with `Utc::now()`.
+    ///
+    /// # Arguments
+    /// * `user_scope` - User namespace
+    /// * `entity` - Entity name
+    /// * `slot` - Slot name
+    ///
+    /// # Returns
+    /// The current value, or None if no card exists.
+    pub async fn get_current_card(
+        &self,
+        user_scope: &str,
+        entity: &str,
+        slot: &str,
+    ) -> anyhow::Result<Option<crate::extraction::MemoryCard>> {
+        let temporal_repo = crate::temporal::DatabaseCardRepositoryTemporal::new(self.db.clone());
+        Ok(
+            crate::temporal::TimeTravelQuery::get_current(&temporal_repo, user_scope, entity, slot)
+                .await,
+        )
     }
 }

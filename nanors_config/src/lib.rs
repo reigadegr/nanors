@@ -22,6 +22,3 @@ mod schema;
 pub use schema::{
     AgentDefaults, AgentsConfig, Config, DatabaseConfig, ProviderConfig, ProvidersConfig,
 };
-
-// Re-export RetrievalConfig from nanors_core for convenience
-pub use nanors_core::agent::RetrievalConfig;

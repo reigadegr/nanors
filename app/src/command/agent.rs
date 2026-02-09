@@ -1,7 +1,8 @@
 use nanors_config::Config;
 use nanors_core::{AgentConfig, AgentLoop};
+use nanors_memory::MemoryManager;
 use nanors_providers::ZhipuProvider;
-use nanors_session::SessionManager;
+use std::sync::Arc;
 use tracing::info;
 use uuid::Uuid;
 
@@ -42,7 +43,7 @@ impl super::CommandStrategy for AgentStrategy {
         let provider = ZhipuProvider::new(config.providers.zhipu.api_key.clone());
 
         info!("Connecting to database");
-        let session_manager = SessionManager::new(&config.database.url).await?;
+        let memory_manager = Arc::new(MemoryManager::new(&config.database.url).await?);
 
         let agent_config = AgentConfig {
             model: input
@@ -52,12 +53,13 @@ impl super::CommandStrategy for AgentStrategy {
             temperature: config.agents.defaults.temperature,
         };
 
-        let agent = AgentLoop::new(provider, session_manager, agent_config);
+        // Create agent with MemoryManager as both session and memory storage
+        let agent = AgentLoop::new(provider, memory_manager.clone(), agent_config);
 
         let agent = if config.memory.enabled {
-            super::setup_memory_agent(&config, agent).await?
+            super::setup_memory_storage(&config, agent, memory_manager)
         } else {
-            info!("Memory feature disabled");
+            info!("Memory feature disabled (session storage still available)");
             agent
         };
 

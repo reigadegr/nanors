@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 use crate::extraction::cards::{CardKind, MemoryCard, Polarity, VersionRelation};
 use crate::extraction::patterns::{ExtractionPattern, PatternDef};
+use crate::schema::SchemaRegistry;
 
 /// Configuration for the extraction engine.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -215,19 +216,34 @@ pub trait CardRepository: Send + Sync {
 /// Database implementation of card repository.
 pub struct DatabaseCardRepository {
     db: DatabaseConnection,
+    schema_registry: SchemaRegistry,
 }
 
 impl DatabaseCardRepository {
     /// Create a new database-backed card repository.
     #[must_use]
-    pub const fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self {
+            db,
+            schema_registry: SchemaRegistry::new(),
+        }
+    }
+
+    /// Get a reference to the schema registry.
+    #[must_use]
+    pub const fn schema_registry(&self) -> &SchemaRegistry {
+        &self.schema_registry
     }
 }
 
 #[async_trait]
 impl CardRepository for DatabaseCardRepository {
     async fn insert(&self, card: &MemoryCard) -> anyhow::Result<Uuid> {
+        // Validate card against schema before storing
+        self.schema_registry
+            .validate_card(card)
+            .map_err(|e| anyhow::anyhow!("Schema validation failed: {e}"))?;
+
         let model = memory_cards::ActiveModel {
             id: Set(card.id),
             user_scope: Set(card.user_scope.clone()),
@@ -304,6 +320,11 @@ impl CardRepository for DatabaseCardRepository {
     }
 
     async fn upsert_card(&self, card: &MemoryCard) -> anyhow::Result<Uuid> {
+        // Validate card against schema before storing/updating
+        self.schema_registry
+            .validate_card(card)
+            .map_err(|e| anyhow::anyhow!("Schema validation failed: {e}"))?;
+
         // Check for existing card with same version_key - get the database model directly
         let existing_model = MemoryCardEntity::find()
             .filter(memory_cards::Column::UserScope.eq(&card.user_scope))

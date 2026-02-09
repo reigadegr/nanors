@@ -30,6 +30,9 @@ mod schema;
 mod scoring;
 mod temporal;
 
+// Re-export SessionStorage so MemoryManager can be used as session storage
+pub use nanors_core::SessionStorage;
+
 pub use dedup::content_hash;
 pub use enrichment::{
     DatabaseEnrichmentRepository, EngineStamp, EnrichmentManifest, EnrichmentParams,
