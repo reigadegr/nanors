@@ -1,4 +1,59 @@
 use chrono::{DateTime, Utc};
+use std::collections::HashSet;
+
+/// Compute keyword overlap score between two strings using character-level bigrams.
+///
+/// This is a simple approximation of text similarity that helps match questions
+/// with answers when vector similarity alone is insufficient.
+///
+/// Returns 0.0 if either string is empty.
+#[must_use]
+pub fn keyword_overlap(a: &str, b: &str) -> f64 {
+    if a.is_empty() || b.is_empty() {
+        return 0.0;
+    }
+
+    // Extract character bigrams from both strings
+    let bigrams_a: HashSet<String> = a
+        .chars()
+        .collect::<Vec<char>>()
+        .windows(2)
+        .map(|w| w.iter().collect())
+        .collect();
+
+    let bigrams_b: HashSet<String> = b
+        .chars()
+        .collect::<Vec<char>>()
+        .windows(2)
+        .map(|w| w.iter().collect())
+        .collect();
+
+    if bigrams_a.is_empty() || bigrams_b.is_empty() {
+        return 0.0;
+    }
+
+    // Jaccard similarity: |A ∩ B| / |A ∪ B|
+    let intersection = bigrams_a.intersection(&bigrams_b).count();
+    let union = bigrams_a.union(&bigrams_b).count();
+
+    if union == 0 {
+        return 0.0;
+    }
+
+    intersection as f64 / union as f64
+}
+
+/// Compute hybrid similarity score combining vector and keyword similarity.
+///
+/// Formula: `vector_sim * 0.7 + keyword_overlap * 0.3`
+///
+/// This gives 70% weight to semantic vector similarity and 30% to keyword overlap.
+/// The keyword overlap helps match Q&A pairs where the semantic meaning differs
+/// but key terms are shared (e.g., "What is my phone?" vs "My phone is `OnePlus` 13").
+#[must_use]
+pub fn hybrid_similarity(vector_sim: f64, keyword_overlap: f64) -> f64 {
+    vector_sim.mul_add(0.7, keyword_overlap * 0.3)
+}
 
 /// Compute cosine similarity between two embedding vectors.
 ///

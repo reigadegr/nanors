@@ -25,6 +25,7 @@ pub trait MemoryItemRepo: Send + Sync {
         &self,
         user_scope: &str,
         query_embedding: &[f32],
+        query_text: &str,
         top_k: usize,
     ) -> anyhow::Result<Vec<SalienceScore<MemoryItem>>>;
 

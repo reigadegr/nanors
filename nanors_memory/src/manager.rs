@@ -96,8 +96,15 @@ impl MemoryManager {
         // Semantic similarity check: only if we have an embedding
         if let Some(ref embedding) = item.embedding {
             // Search for semantically similar memories (fetch more than needed)
-            let similar_memories =
-                MemoryItemRepo::search_by_embedding(self, &item.user_scope, embedding, 20).await?;
+            // Use item.summary as query text for hybrid similarity matching
+            let similar_memories = MemoryItemRepo::search_by_embedding(
+                self,
+                &item.user_scope,
+                embedding,
+                &item.summary,
+                20,
+            )
+            .await?;
 
             // Determine if this is a user memory (starts with "User:")
             let is_user_memory = item.summary.starts_with("User:");
@@ -117,9 +124,23 @@ impl MemoryManager {
                     .as_ref()
                     .map_or(0.0, |emb| scoring::cosine_similarity(embedding, emb));
 
-                // Check if similarity exceeds threshold
-                // Use >0.95 to avoid self-matches (but allow for exact same content updates)
-                if similarity > similarity_threshold && similarity < 0.98 {
+                // For near-identical content (similarity > 0.97), just reinforce the existing memory
+                // For semantically similar but not identical content (threshold < similarity <= 0.97),
+                // create a new version (useful for fact updates like address changes)
+                if similarity > 0.97 {
+                    // Near-identical content - reinforce existing memory instead of creating duplicate
+                    let mut updated = score.item.clone();
+                    updated.reinforcement_count += 1;
+                    updated.updated_at = Utc::now();
+                    MemoryItemRepo::update(self, &updated).await?;
+                    info!(
+                        "Reinforced near-duplicate memory: {} (similarity={:.3}, count={})",
+                        updated.id, similarity, updated.reinforcement_count
+                    );
+                    return Ok(updated.id);
+                }
+
+                if similarity > similarity_threshold {
                     // Found a semantically similar memory - create a new version
                     let mut updated = score.item.clone();
                     updated.summary = item.summary.clone();
@@ -241,6 +262,7 @@ impl MemoryItemRepo for MemoryManager {
         &self,
         user_scope: &str,
         query_embedding: &[f32],
+        query_text: &str,
         top_k: usize,
     ) -> anyhow::Result<Vec<SalienceScore<MemoryItem>>> {
         let items: Vec<MemoryItem> = MemoryItemRepo::list_by_scope(self, user_scope).await?;
@@ -251,36 +273,50 @@ impl MemoryItemRepo for MemoryManager {
         let mut filtered_scores: Vec<SalienceScore<MemoryItem>> = items
             .into_par_iter()
             .map(|item| {
-                let salience = if let Some(embedding) = &item.embedding {
-                    let similarity = scoring::cosine_similarity(query_embedding, embedding);
-                    scoring::compute_salience(
-                        similarity,
+                let (similarity, salience) = if let Some(embedding) = &item.embedding {
+                    let vector_sim = scoring::cosine_similarity(query_embedding, embedding);
+                    // Compute keyword overlap score
+                    let keyword_overlap = scoring::keyword_overlap(query_text, &item.summary);
+                    // Use hybrid similarity: 70% vector + 30% keyword
+                    let hybrid_sim = scoring::hybrid_similarity(vector_sim, keyword_overlap);
+                    let sal = scoring::compute_salience(
+                        hybrid_sim,
                         item.reinforcement_count,
                         item.happened_at,
                         now,
-                    )
+                    );
+                    (hybrid_sim, sal)
                 } else {
                     // Items without embeddings get a low default score based on recency only
-                    scoring::compute_salience(0.0, item.reinforcement_count, item.happened_at, now)
+                    // Still compute keyword overlap for relevance
+                    let keyword_overlap = scoring::keyword_overlap(query_text, &item.summary);
+                    let hybrid_sim = scoring::hybrid_similarity(0.0, keyword_overlap);
+                    (
+                        hybrid_sim,
+                        scoring::compute_salience(
+                            hybrid_sim,
+                            item.reinforcement_count,
+                            item.happened_at,
+                            now,
+                        ),
+                    )
                 };
 
                 SalienceScore {
                     item,
                     score: salience,
+                    similarity,
                 }
             })
-            .filter(|score| {
-                let sim = score
-                    .item
-                    .embedding
-                    .as_ref()
-                    .map_or(0.0, |emb| scoring::cosine_similarity(query_embedding, emb));
-                sim < 0.95
-            })
+            .filter(|score| score.similarity < 0.95)
             .collect();
 
-        // Use parallel unstable sort for better performance (no extra allocation)
-        filtered_scores.par_sort_unstable_by(|a, b| b.score.total_cmp(&a.score));
+        // Sort by similarity first (primary), then by salience score (secondary)
+        // This ensures semantic relevance is prioritized over recency
+        filtered_scores.par_sort_unstable_by(|a, b| match b.similarity.total_cmp(&a.similarity) {
+            std::cmp::Ordering::Equal => b.score.total_cmp(&a.score),
+            other => other,
+        });
         filtered_scores.truncate(top_k);
 
         Ok(filtered_scores)

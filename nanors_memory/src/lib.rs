@@ -14,7 +14,8 @@
     clippy::similar_names,
     clippy::missing_safety_doc,
     clippy::missing_panics_doc,
-    clippy::missing_errors_doc
+    clippy::missing_errors_doc,
+    clippy::cast_precision_loss
 )]
 
 mod convert;

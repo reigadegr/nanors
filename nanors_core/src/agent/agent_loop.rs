@@ -198,6 +198,7 @@ where
             .search_by_embedding(
                 &self.user_scope,
                 &query_embedding,
+                query,
                 self.retrieval_config.items_top_k,
             )
             .await
@@ -209,9 +210,22 @@ where
             return "You are a helpful AI assistant.".to_string();
         }
 
-        // Sort by recency first (most recent first)
-        let mut items = items;
-        items.sort_by_key(|b| std::cmp::Reverse(b.item.happened_at));
+        // Debug: Log similarity scores for top items
+        info!("=== Top {} memories by similarity ===", items.len().min(20));
+        for (i, item_score) in items.iter().take(20).enumerate() {
+            info!(
+                "  [{}] sim={:.4} score={:.4} - [{}] {}",
+                i + 1,
+                item_score.similarity,
+                item_score.score,
+                time_ago_since(item_score.item.happened_at),
+                item_score.item.summary
+            );
+        }
+        info!("=== End similarity ranking ===");
+
+        // Note: items are already sorted by similarity first (in search_by_embedding)
+        // No need to re-sort by recency here - similarity is the primary ranking factor
 
         let mut context_parts = Vec::new();
         let mut total_length = 0_usize;

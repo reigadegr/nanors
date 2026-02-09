@@ -52,4 +52,6 @@ pub struct MemoryItem {
 pub struct SalienceScore<T> {
     pub item: T,
     pub score: f64,
+    /// Raw cosine similarity score (0.0 - 1.0) used for primary ranking
+    pub similarity: f64,
 }
