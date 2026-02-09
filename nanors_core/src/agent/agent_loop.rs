@@ -314,7 +314,6 @@ where
     /// Retrieve and format tier 2 memory items
     async fn retrieve_items_tier(
         &self,
-        _query: &str,
         query_embedding: &[f32],
         context_parts: &mut Vec<String>,
         total_length: &mut usize,
@@ -478,13 +477,8 @@ where
         }
 
         // Tier 2: Items (only if needed)
-        self.retrieve_items_tier(
-            query,
-            &query_embedding,
-            &mut context_parts,
-            &mut total_length,
-        )
-        .await;
+        self.retrieve_items_tier(&query_embedding, &mut context_parts, &mut total_length)
+            .await;
 
         // Sufficiency check after Tier 2
         if self.retrieval_config.sufficiency_check_enabled {
@@ -585,7 +579,7 @@ where
             };
 
             match memory.insert(&user_memory).await {
-                Ok(_) => {
+                Ok(()) => {
                     debug!("Stored user memory: {}", user_memory.id);
                 }
                 Err(e) => {
@@ -616,7 +610,7 @@ where
             };
 
             match memory.insert(&assistant_memory).await {
-                Ok(_) => {
+                Ok(()) => {
                     debug!("Stored assistant memory: {}", assistant_memory.id);
                 }
                 Err(e) => {

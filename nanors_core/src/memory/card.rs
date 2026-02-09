@@ -1,22 +1,3 @@
-#![warn(
-    clippy::all,
-    clippy::nursery,
-    clippy::pedantic,
-    clippy::style,
-    clippy::complexity,
-    clippy::perf,
-    clippy::correctness,
-    clippy::suspicious,
-    clippy::unwrap_used,
-    clippy::expect_used
-)]
-#![allow(
-    clippy::similar_names,
-    clippy::missing_safety_doc,
-    clippy::missing_panics_doc,
-    clippy::missing_errors_doc
-)]
-
 //! Memory card types for structured memory extraction and storage.
 //!
 //! Memory cards are atomic, structured representations of memories extracted
@@ -24,10 +5,11 @@
 //! cards are semantic units with identity, value, temporality, provenance,
 //! and versioning information.
 //!
-//! Ported from memvid with adaptations for database storage (Uuid, DateTime<Utc>).
+//! Ported from memvid with adaptations for database storage (Uuid, `DateTime<Utc>`).
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use uuid::Uuid;
 
 /// The kind of memory being stored.
@@ -66,18 +48,20 @@ impl MemoryKind {
             Self::Other => "other",
         }
     }
+}
 
-    /// Parse a string into a `MemoryKind`.
-    #[must_use]
-    pub fn from_str(s: &str) -> Self {
+impl FromStr for MemoryKind {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "fact" => Self::Fact,
-            "preference" => Self::Preference,
-            "event" => Self::Event,
-            "profile" => Self::Profile,
-            "relationship" => Self::Relationship,
-            "goal" => Self::Goal,
-            _ => Self::Other,
+            "fact" => Ok(Self::Fact),
+            "preference" => Ok(Self::Preference),
+            "event" => Ok(Self::Event),
+            "profile" => Ok(Self::Profile),
+            "relationship" => Ok(Self::Relationship),
+            "goal" => Ok(Self::Goal),
+            _ => Ok(Self::Other),
         }
     }
 }
@@ -109,21 +93,23 @@ impl VersionRelation {
             Self::Retracts => "retracts",
         }
     }
+}
 
-    /// Parse a string into a `VersionRelation`.
-    #[must_use]
-    pub fn from_str(s: &str) -> Self {
+impl FromStr for VersionRelation {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "updates" => Self::Updates,
-            "extends" => Self::Extends,
-            "retracts" => Self::Retracts,
-            _ => Self::Sets,
+            "updates" => Ok(Self::Updates),
+            "extends" => Ok(Self::Extends),
+            "retracts" => Ok(Self::Retracts),
+            _ => Ok(Self::Sets),
         }
     }
 }
 
 /// Polarity for preferences and boolean facts.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 #[repr(u8)]
 pub enum Polarity {
@@ -132,6 +118,7 @@ pub enum Polarity {
     /// "dislikes", "avoids", "doesn't want"
     Negative = 1,
     /// Factual, no sentiment
+    #[default]
     Neutral = 2,
 }
 
@@ -145,22 +132,18 @@ impl Polarity {
             Self::Neutral => "neutral",
         }
     }
-
-    /// Parse a string into a Polarity.
-    #[must_use]
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "positive" => Some(Self::Positive),
-            "negative" => Some(Self::Negative),
-            "neutral" => Some(Self::Neutral),
-            _ => None,
-        }
-    }
 }
 
-impl Default for Polarity {
-    fn default() -> Self {
-        Self::Neutral
+impl FromStr for Polarity {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "positive" => Ok(Self::Positive),
+            "negative" => Ok(Self::Negative),
+            "neutral" => Ok(Self::Neutral),
+            _ => Err(anyhow::anyhow!("invalid polarity: {s}")),
+        }
     }
 }
 
@@ -202,7 +185,7 @@ pub struct MemoryCard {
     /// The entity this memory is about (e.g., "user", "user.team", "project.memvid").
     pub entity: String,
 
-    /// The attribute/slot being described (e.g., "employer", "favorite_food", "location").
+    /// The attribute/slot being described (e.g., "employer", "`favorite_food`", "location").
     pub slot: String,
 
     /// The actual value (always stored as string, can be JSON for complex values).
@@ -260,7 +243,7 @@ impl MemoryCard {
 
     /// Check if this card supersedes another based on version relation and timestamps.
     #[must_use]
-    pub fn supersedes(&self, other: &MemoryCard) -> bool {
+    pub fn supersedes(&self, other: &Self) -> bool {
         // Must have same version key to supersede
         let self_key = self
             .version_key
@@ -283,8 +266,7 @@ impl MemoryCard {
                 match (self_time, other_time) {
                     (Some(st), Some(ot)) => st > ot,
                     (Some(_), None) => true,
-                    (None, Some(_)) => false,
-                    (None, None) => false,
+                    (None, Some(_) | None) => false,
                 }
             }
             VersionRelation::Sets | VersionRelation::Extends => false,
@@ -296,7 +278,7 @@ impl MemoryCard {
     pub fn effective_timestamp(&self) -> DateTime<Utc> {
         self.event_date
             .or(self.document_date)
-            .unwrap_or_else(|| self.created_at)
+            .unwrap_or(self.created_at)
     }
 
     /// Check if this card is a retraction.
@@ -586,6 +568,10 @@ mod tests {
     #[test]
     fn test_memory_card_builder() {
         let id = Uuid::now_v7();
+        #[expect(
+            clippy::expect_used,
+            reason = "test: builder with all required fields must succeed"
+        )]
         let card = MemoryCardBuilder::new()
             .user_scope("test_user")
             .fact()
@@ -594,7 +580,7 @@ mod tests {
             .value("Anthropic")
             .engine("rules-v1", "1.0.0")
             .build(id)
-            .unwrap();
+            .expect("builder with all required fields must succeed");
 
         assert_eq!(card.id, id);
         assert_eq!(card.kind, MemoryKind::Fact);
@@ -607,6 +593,10 @@ mod tests {
     #[test]
     fn test_preference_with_polarity() {
         let id = Uuid::now_v7();
+        #[expect(
+            clippy::expect_used,
+            reason = "test: preference builder with polarity must succeed"
+        )]
         let card = MemoryCardBuilder::new()
             .user_scope("test_user")
             .preference()
@@ -616,7 +606,7 @@ mod tests {
             .positive()
             .engine("rules-v1", "1.0.0")
             .build(id)
-            .unwrap();
+            .expect("preference builder with polarity must succeed");
 
         assert_eq!(card.kind, MemoryKind::Preference);
         assert_eq!(card.polarity, Some(Polarity::Positive));
@@ -625,6 +615,10 @@ mod tests {
     #[test]
     fn test_version_key_default() {
         let id = Uuid::now_v7();
+        #[expect(
+            clippy::expect_used,
+            reason = "test: builder with all required fields must succeed"
+        )]
         let card = MemoryCardBuilder::new()
             .user_scope("test_user")
             .fact()
@@ -633,7 +627,7 @@ mod tests {
             .value("San Francisco")
             .engine("rules-v1", "1.0.0")
             .build(id)
-            .unwrap();
+            .expect("builder with all required fields must succeed");
 
         assert_eq!(card.default_version_key(), "user:location");
     }
@@ -645,6 +639,7 @@ mod tests {
         let now = Utc::now();
         let earlier = now - chrono::Duration::days(1);
 
+        #[expect(clippy::expect_used, reason = "test: old card builder must succeed")]
         let old_card = MemoryCardBuilder::new()
             .user_scope("test_user")
             .fact()
@@ -654,8 +649,9 @@ mod tests {
             .document_date(earlier)
             .engine("rules-v1", "1.0.0")
             .build(id1)
-            .unwrap();
+            .expect("old card builder must succeed");
 
+        #[expect(clippy::expect_used, reason = "test: new card builder must succeed")]
         let new_card = MemoryCardBuilder::new()
             .user_scope("test_user")
             .fact()
@@ -666,11 +662,12 @@ mod tests {
             .updates()
             .engine("rules-v1", "1.0.0")
             .build(id2)
-            .unwrap();
+            .expect("new card builder must succeed");
 
         assert!(new_card.supersedes(&old_card));
 
         // Sets doesn't supersede
+        #[expect(clippy::expect_used, reason = "test: sets card builder must succeed")]
         let sets_card = MemoryCardBuilder::new()
             .user_scope("test_user")
             .fact()
@@ -680,7 +677,7 @@ mod tests {
             .document_date(now)
             .engine("rules-v1", "1.0.0")
             .build(id2)
-            .unwrap();
+            .expect("sets card builder must succeed");
         assert!(!sets_card.supersedes(&old_card));
     }
 
@@ -699,8 +696,26 @@ mod tests {
 
     #[test]
     fn test_memory_kind_from_str() {
-        assert_eq!(MemoryKind::from_str("fact"), MemoryKind::Fact);
-        assert_eq!(MemoryKind::from_str("PREFERENCE"), MemoryKind::Preference);
-        assert_eq!(MemoryKind::from_str("custom_type"), MemoryKind::Other);
+        #[expect(
+            clippy::expect_used,
+            reason = "test: valid input must parse successfully"
+        )]
+        let kind = MemoryKind::from_str("fact").expect("valid input must parse successfully");
+        assert_eq!(kind, MemoryKind::Fact);
+
+        #[expect(
+            clippy::expect_used,
+            reason = "test: valid input must parse successfully"
+        )]
+        let kind = MemoryKind::from_str("PREFERENCE").expect("valid input must parse successfully");
+        assert_eq!(kind, MemoryKind::Preference);
+
+        #[expect(
+            clippy::expect_used,
+            reason = "test: valid input must parse successfully"
+        )]
+        let kind =
+            MemoryKind::from_str("custom_type").expect("valid input must parse successfully");
+        assert_eq!(kind, MemoryKind::Other);
     }
 }

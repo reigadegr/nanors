@@ -1,22 +1,3 @@
-#![warn(
-    clippy::all,
-    clippy::nursery,
-    clippy::pedantic,
-    clippy::style,
-    clippy::complexity,
-    clippy::perf,
-    clippy::correctness,
-    clippy::suspicious,
-    clippy::unwrap_used,
-    clippy::expect_used
-)]
-#![allow(
-    clippy::similar_names,
-    clippy::missing_safety_doc,
-    clippy::missing_panics_doc,
-    clippy::missing_errors_doc
-)]
-
 //! Graph result types for structured memory matching.
 
 use serde::{Deserialize, Serialize};
@@ -61,6 +42,10 @@ mod tests {
     use super::*;
 
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "test: exact float comparison is acceptable"
+    )]
     fn test_graph_match_result() {
         let mut result = GraphMatchResult::new("user".to_string(), 0.95);
         result.bind("slot", "employer");
