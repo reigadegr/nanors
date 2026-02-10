@@ -42,12 +42,6 @@ pub struct MemoryConfig {
     pub default_user_scope: String,
     #[serde(default)]
     pub retrieval: RetrievalConfig,
-    #[serde(default)]
-    pub extraction: ExtractionConfig,
-    #[serde(default)]
-    pub query: QueryConfig,
-    #[serde(default)]
-    pub rerank: RerankConfig,
 }
 
 impl Default for MemoryConfig {
@@ -56,9 +50,6 @@ impl Default for MemoryConfig {
             enabled: false,
             default_user_scope: Self::default_user_scope(),
             retrieval: RetrievalConfig::default(),
-            extraction: ExtractionConfig::default(),
-            query: QueryConfig::default(),
-            rerank: RerankConfig::default(),
         }
     }
 }
@@ -66,124 +57,6 @@ impl Default for MemoryConfig {
 impl MemoryConfig {
     fn default_user_scope() -> String {
         "default".to_string()
-    }
-}
-
-/// Configuration for structured memory extraction.
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct ExtractionConfig {
-    /// Enable automatic extraction of structured memory cards.
-    #[serde(default)]
-    pub enabled: bool,
-    /// Minimum confidence threshold for storing extracted cards.
-    #[serde(default = "ExtractionConfig::default_min_confidence")]
-    pub min_confidence: f32,
-    /// Extract cards when storing new memories.
-    #[serde(default = "ExtractionConfig::default_extract_on_store")]
-    pub extract_on_store: bool,
-}
-
-impl Default for ExtractionConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            min_confidence: Self::default_min_confidence(),
-            extract_on_store: Self::default_extract_on_store(),
-        }
-    }
-}
-
-impl ExtractionConfig {
-    const fn default_min_confidence() -> f32 {
-        0.3
-    }
-
-    const fn default_extract_on_store() -> bool {
-        true
-    }
-}
-
-/// Configuration for query analysis and expansion.
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct QueryConfig {
-    /// Enable question type detection.
-    #[serde(default = "QueryConfig::default_detection_enabled")]
-    pub detection_enabled: bool,
-    /// Enable query expansion for better recall.
-    #[serde(default = "QueryConfig::default_expansion_enabled")]
-    pub expansion_enabled: bool,
-    /// Minimum tokens to apply OR query expansion.
-    #[serde(default = "QueryConfig::default_min_or_tokens")]
-    pub min_or_tokens: usize,
-}
-
-impl Default for QueryConfig {
-    fn default() -> Self {
-        Self {
-            detection_enabled: true,
-            expansion_enabled: true,
-            min_or_tokens: Self::default_min_or_tokens(),
-        }
-    }
-}
-
-impl QueryConfig {
-    const fn default_detection_enabled() -> bool {
-        true
-    }
-
-    const fn default_expansion_enabled() -> bool {
-        true
-    }
-
-    const fn default_min_or_tokens() -> usize {
-        2
-    }
-}
-
-/// Configuration for result reranking.
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct RerankConfig {
-    /// Enable reranking of search results.
-    #[serde(default = "RerankConfig::default_enabled")]
-    pub enabled: bool,
-    /// Weight for keyword matching boost (0.0-1.0).
-    #[serde(default = "RerankConfig::default_keyword_weight")]
-    pub keyword_weight: f64,
-    /// Weight for recency boost (0.0-1.0).
-    #[serde(default = "RerankConfig::default_recency_weight")]
-    pub recency_weight: f64,
-    /// Weight for profile fact boost (0.0-1.0).
-    #[serde(default = "RerankConfig::default_profile_weight")]
-    pub profile_weight: f64,
-}
-
-impl Default for RerankConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            keyword_weight: Self::default_keyword_weight(),
-            recency_weight: Self::default_recency_weight(),
-            profile_weight: Self::default_profile_weight(),
-        }
-    }
-}
-
-impl RerankConfig {
-    const fn default_enabled() -> bool {
-        true
-    }
-
-    const fn default_keyword_weight() -> f64 {
-        0.2
-    }
-
-    const fn default_recency_weight() -> f64 {
-        0.15
-    }
-
-    const fn default_profile_weight() -> f64 {
-        0.25
     }
 }
 
@@ -275,22 +148,6 @@ impl Config {
                     context_target_length: 2000,
                     adaptive: nanors_core::retrieval::adaptive::AdaptiveConfig::default(),
                 },
-                extraction: ExtractionConfig {
-                    enabled: true,
-                    min_confidence: 0.5,
-                    extract_on_store: true,
-                },
-                query: QueryConfig {
-                    detection_enabled: true,
-                    expansion_enabled: true,
-                    min_or_tokens: 2,
-                },
-                rerank: RerankConfig {
-                    enabled: true,
-                    keyword_weight: 0.2,
-                    recency_weight: 0.15,
-                    profile_weight: 0.25,
-                },
             },
         };
 
@@ -299,10 +156,6 @@ impl Config {
 
         println!("Created config file at: {}", config_path.display());
         println!("Please edit it and add your Zhipu API key.");
-        println!("Configuration includes:");
-        println!("  - Structured memory extraction (enabled by default)");
-        println!("  - Question type detection (enabled by default)");
-        println!("  - Query expansion (enabled by default)");
         Ok(())
     }
 }

@@ -91,7 +91,8 @@ CREATE TABLE memory_cards (
 
     -- Provenance
     source_memory_id UUID,             -- Link to original memory_items record
-    source_frame_id INTEGER,
+    engine VARCHAR(64) NOT NULL,        -- Engine identifier (e.g., "rules", "llm:qwen")
+    engine_version VARCHAR(64) NOT NULL, -- Engine version for tracking
     confidence FLOAT,                  -- 0.0-1.0 for probabilistic extraction
 
     -- Metadata
@@ -110,16 +111,27 @@ CREATE INDEX idx_cards_entity_slot ON memory_cards(user_scope, entity, slot);
 CREATE INDEX idx_cards_version_key ON memory_cards(user_scope, version_key);
 CREATE INDEX idx_cards_source_memory ON memory_cards(source_memory_id);
 
--- Query expansion cache
-CREATE TABLE query_expansions (
+-- Enrichment tracking table (for incremental processing)
+CREATE TABLE enrichment_records (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    original_query TEXT NOT NULL,
-    expanded_query TEXT NOT NULL,
-    expansion_type VARCHAR(32) NOT NULL, -- or_query, stopwords, expanded
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+    user_scope VARCHAR(255) NOT NULL,
+    memory_id UUID NOT NULL,
+    engine_kind VARCHAR(64) NOT NULL,
+    engine_version VARCHAR(64) NOT NULL,
+    enriched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    card_ids UUID[],
+    success BOOLEAN NOT NULL DEFAULT true,
+    error_message TEXT,
+    extra JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
 
-CREATE INDEX idx_expansions_original ON query_expansions(original_query);
+    CONSTRAINT fk_enrichment_memory
+        FOREIGN KEY (memory_id)
+        REFERENCES memory_items(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT unique_enrichment UNIQUE (user_scope, memory_id, engine_kind, engine_version)
+);
 ```
 
 ## Module Structure
@@ -130,26 +142,65 @@ nanors_memory/src/
 │   ├── mod.rs              # Extraction module entry point
 │   ├── cards.rs            # MemoryCard types (based on memvid)
 │   ├── patterns.rs         # Regex patterns for Chinese/English
-│   ├── engine.rs           # ExtractionEngine trait and impl
-│   └── chinese.rs          # Chinese-specific patterns
+│   └── engine.rs           # ExtractionEngine trait and impl
 ├── query/
 │   ├── mod.rs              # Query analysis module
 │   ├── detector.rs         # QuestionTypeDetector
-│   ├── expander.rs         # QueryExpander
-│   └── stopwords.rs        # Stopword lists (Chinese/English)
+│   └── expander.rs         # QueryExpander
+├── enrichment/
+│   ├── mod.rs              # Enrichment tracking module
+│   └── manifest.rs         # EnrichmentManifest for incremental processing
 └── lib.rs                  # Add new exports
 ```
 
-## Implementation Phases
+## Implementation Status
 
-### Phase 1: Database Schema & Core Types
+### ✅ Completed
 
-**Files to create:**
-1. `migration/src/m010_create_memory_cards.rs`
-2. `nanors_core/src/memory/cards.rs` - Export `MemoryCard` types
-3. `nanors_entities/src/memory_cards.rs` - SeaORM entities (via CLI)
+1. **Database Schema**
+   - `memory_cards` table with entity/slot/value model
+   - `enrichment_records` table for tracking incremental processing
+   - Indexes for O(1) card lookups
 
-**Core Types:**
+2. **Extraction Engine** (`nanors_memory/src/extraction/`)
+   - `ExtractionEngine` with configurable regex patterns
+   - Default Chinese/English patterns for common facts
+   - `CardRepository` trait with database implementation
+   - Confidence-based filtering
+
+3. **Question Type Detection** (`nanors_memory/src/query/detector.rs`)
+   - `QuestionTypeDetector` with priority-based pattern matching
+   - Support for: WhatKind, HowMany, Recency, Where, Preference, etc.
+   - Chinese and English pattern support
+
+4. **Query Expansion** (`nanors_memory/src/query/expander.rs`)
+   - `QueryExpander` with OR query and stopword removal
+   - Chinese/English stopword lists
+   - In-memory expansion (no database caching needed)
+
+5. **Enrichment Tracking** (`nanors_memory/src/enrichment/`)
+   - `EnrichmentManifest` with Arc<RwLock<HashMap>> for thread-safe caching
+   - `EnrichmentRepository` trait for database operations
+   - Incremental processing support (skip already-enriched memories)
+
+6. **Retrieval Integration** (`nanors_memory/src/retrieval.rs`)
+   - `search_enhanced()` method with question detection
+   - Card lookup for O(1) fact retrieval
+   - Question-type-specific ranking
+
+### 🚧 Not Implemented (Removed as Dead Code)
+
+The following were planned but removed as unused configuration:
+
+- ~~`ExtractionConfig` in user config~~ - Extraction uses internal defaults
+- ~~`QueryConfig` in user config~~ - Query expansion uses internal defaults
+- ~~`RerankConfig` in user config~~ - Reranking uses internal defaults
+- ~~`query_expansions` table~~ - Query expansion is in-memory only
+
+**Reason**: These configuration options were never wired into the application code. The features work with sensible defaults, and configuration can be added later when actually needed.
+
+## Core Types
+
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -176,422 +227,61 @@ pub struct MemoryCard {
     pub confidence: Option<f32>,
     pub created_at: DateTime<Utc>,
 }
-```
 
-**Commands:**
-```bash
-# Generate entities after migration
-sea-orm-cli generate entity --with-serde=both -o nanors_entities/src
-```
-
-### Phase 2: Structured Memory Extraction
-
-**Files to create:**
-1. `nanors_memory/src/extraction/mod.rs`
-2. `nanors_memory/src/extraction/cards.rs` - MemoryCard types
-3. `nanors_memory/src/extraction/patterns.rs` - Regex patterns
-4. `nanors_memory/src/extraction/chinese.rs` - Chinese patterns
-5. `nanors_memory/src/extraction/engine.rs` - ExtractionEngine
-
-**Chinese Extraction Patterns:**
-```rust
-// User identity statements
-r"(?i)我是(.{1,20})(用户|玩机党|开发者|学生|工程师)"
-
-// Location statements
-r"(?i)我住在?(.{1,30})"
-
-// Device ownership
-r"(?i)我(的|用)?(手机|电脑|设备)是?(.{1,30})"
-
-// Action/behavior
-r"(?i)我(喜欢|爱|讨厌)(.{1,30})"
-```
-
-**Extraction Flow:**
-```rust
-pub trait ExtractionEngine {
-    fn extract(&self, text: &str, scope: &str) -> Vec<MemoryCard>;
-}
-
-impl ExtractionEngine for RulesEngine {
-    fn extract(&self, text: &str, scope: &str) -> Vec<MemoryCard> {
-        let mut cards = Vec::new();
-
-        // Apply all patterns
-        for pattern in &self.patterns {
-            if let Some(card) = pattern.apply(text, scope) {
-                cards.push(card);
-            }
-        }
-
-        cards
-    }
-}
-```
-
-### Phase 3: Question Type Detection
-
-**Files to create:**
-1. `nanors_memory/src/query/mod.rs`
-2. `nanors_memory/src/query/detector.rs`
-
-**Question Types:**
-```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QuestionType {
-    // Identity questions: "我是什么用户", "who am I"
-    WhatKind,
-
-    // Counting questions: "有多少个", "how many"
-    HowMany,
-
-    // Recency questions: "现在的", "最新", "current", "latest"
-    Recency,
-
-    // Update questions: "之前vs现在", "changed from"
-    Update,
-
-    // Location questions: "在哪", "where"
-    Where,
-
-    // Preference questions: "喜欢什么", "what do you like"
-    Preference,
-
-    // Generic/unrecognized
-    Generic,
+    WhatKind,   // "我是什么用户", "who am I"
+    HowMany,    // "有多少个", "how many"
+    Recency,    // "现在的", "最新", "current"
+    Update,     // "之前vs现在", "changed from"
+    Where,      // "在哪", "where"
+    Preference, // "喜欢什么", "what do you like"
+    When,       // "什么时候", "when"
+    Have,       // "有谁", "have what"
+    Can,        // "会什么", "can you"
+    Generic,    // Default
 }
 ```
 
-**Detection Patterns:**
-```rust
-impl QuestionTypeDetector {
-    pub fn detect(&self, query: &str) -> QuestionType {
-        let query = query.to_lowercase();
+## Usage Examples
 
-        // Check in priority order
-        if self.is_what_kind(&query) {
-            return QuestionType::WhatKind;
-        }
-        if self.is_how_many(&query) {
-            return QuestionType::HowMany;
-        }
-        if self.is_recency(&query) {
-            return QuestionType::Recency;
-        }
-        // ... more patterns
-
-        QuestionType::Generic
-    }
-}
-```
-
-**Chinese Patterns:**
-```rust
-// WhatKind: "我是什么", "我是谁", "我的身份"
-const WHAT_KIND_PATTERNS: &[&str] = &[
-    "我是什么", "我是谁", "我的身份", "我是.*用户",
-    "我属于", "我算.*用户", "我是.*吗",
-];
-
-// Recency: "现在", "目前", "最新", "当前"
-const RECENCY_PATTERNS: &[&str] = &[
-    "现在", "目前", "最新", "当前", "最近",
-    "latest", "current", "right now",
-];
-```
-
-### Phase 4: Query Expansion
-
-**Files to create:**
-1. `nanors_memory/src/query/expander.rs`
-2. `nanors_memory/src/query/stopwords.rs`
-
-**Expansion Strategies:**
-```rust
-pub struct QueryExpander {
-    stopwords: HashSet<String>,
-}
-
-impl QueryExpander {
-    /// Generate OR query from tokens for better recall
-    pub fn expand_or(&self, query: &str) -> String {
-        let tokens = self.tokenize(query);
-        let content_tokens: Vec<_> = tokens
-            .into_iter()
-            .filter(|t| !self.is_stopword(t))
-            .collect();
-
-        content_tokens.join(" OR ")
-    }
-
-    /// Remove question words to get core terms
-    pub fn remove_stopwords(&self, query: &str) -> String {
-        // Remove "什么", "怎么", "如何", "where", "what", etc.
-    }
-
-    /// Generate singular/plural variants
-    pub fn expand_variants(&self, query: &str) -> Vec<String> {
-        // "用户" -> "用户", "user"
-    }
-}
-```
-
-**Chinese Stopwords:**
-```rust
-const CHINESE_STOPWORDS: &[&str] = &[
-    // Question words
-    "什么", "怎么", "如何", "哪里", "哪个", "多少",
-    "谁", "什么时候", "为什么", "咋",
-
-    // Common particles
-    "的", "了", "吗", "呢", "吧", "啊",
-
-    // Copular verbs
-    "是", "有", "在",
-];
-
-// Keep these as they're content-bearing
-const CONTENT_WORDS: &[&str] = &[
-    "用户", "玩机", "开发者", "学生", "工程师",
-    "手机", "电脑", "安卓", "kernel",
-];
-```
-
-### Phase 5: Retrieval Integration
-
-**Files to modify:**
-1. `nanors_memory/src/manager.rs` - Add card lookup methods
-2. `nanors_core/src/agent/agent_loop.rs` - Integrate new retrieval
-3. `nanors_memory/src/scoring.rs` - Add card scoring boost
-
-**New Manager Methods:**
-```rust
-impl MemoryManager {
-    /// Fast O(1) lookup by entity/slot
-    pub async fn get_card(
-        &self,
-        user_scope: &str,
-        entity: &str,
-        slot: &str,
-    ) -> anyhow::Result<Option<MemoryCard>> {
-        // Direct database query with index
-    }
-
-    /// Extract and store cards from a memory item
-    pub async fn extract_and_store_cards(
-        &self,
-        memory: &MemoryItem,
-    ) -> anyhow::Result<Vec<MemoryCard>> {
-        // Use extraction engine
-        // Store in database
-    }
-}
-```
-
-**Enhanced Search Flow:**
-```rust
-pub async fn search_by_embedding(
-    &self,
-    user_scope: &str,
-    query_embedding: &[f32],
-    query_text: &str,
-    top_k: usize,
-) -> anyhow::Result<Vec<SalienceScore<MemoryItem>>> {
-    // 1. Detect question type
-    let question_type = detector.detect(query_text);
-
-    // 2. Expand query if needed
-    let expanded_query = if question_type != QuestionType::Generic {
-        Some(expander.expand_or(query_text))
-    } else {
-        None
-    };
-
-    // 3. Try structured card lookup first (O(1))
-    if let Some(card) = self.lookup_card_for_query(user_scope, &question_type, query_text).await? {
-        // Boost the source memory in results
-    }
-
-    // 4. Vector search with expanded query
-    // ... existing logic
-
-    // 5. Apply question-type-specific ranking
-    let ranked = match question_type {
-        QuestionType::WhatKind => self.rank_for_what_kind(results),
-        QuestionType::Recency => self.rank_for_recency(results),
-        _ => results,
-    };
-
-    Ok(ranked)
-}
-```
-
-**Card Lookup Logic:**
-```rust
-async fn lookup_card_for_query(
-    &self,
-    user_scope: &str,
-    question_type: &QuestionType,
-    query_text: &str,
-) -> anyhow::Result<Option<MemoryCard>> {
-    match question_type {
-        QuestionType::WhatKind => {
-            // Look for entity="user", slot="user_type"
-            self.get_card(user_scope, "user", "user_type").await
-        }
-        QuestionType::Where => {
-            // Look for entity="user", slot="location"
-            self.get_card(user_scope, "user", "location").await
-        }
-        QuestionType::Recency => {
-            // Same slot but prefer newest
-            self.get_card(user_scope, "user", "user_type").await
-        }
-        _ => Ok(None),
-    }
-}
-```
-
-## Configuration
-
-**Add to `nanors_config/src/schema.rs`:**
-```rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExtractionConfig {
-    pub enabled: bool,
-    pub confidence_threshold: f32,
-    pub extract_on_store: bool,  // Auto-extract when storing memories
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QueryConfig {
-    pub enable_expansion: bool,
-    pub enable_detection: bool,
-    pub expansion_strategies: Vec<String>,
-}
-
-impl Default for ExtractionConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            confidence_threshold: 0.7,
-            extract_on_store: true,
-        }
-    }
-}
-
-impl Default for QueryConfig {
-    fn default() -> Self {
-        Self {
-            enable_expansion: true,
-            enable_detection: true,
-            expansion_strategies: vec!["or_query".to_string(), "stopwords".to_string()],
-        }
-    }
-}
-
-// Add to MemoryConfig
-pub struct MemoryConfig {
-    pub retrieval: RetrievalConfig,
-    pub extraction: ExtractionConfig,
-    pub query: QueryConfig,
-    // ... existing fields
-}
-```
-
-**Config file example (`~/nanors/config.json`):**
-```json
-{
-  "memory": {
-    "extraction": {
-      "enabled": true,
-      "extract_on_store": true
-    },
-    "query": {
-      "enable_expansion": true,
-      "enable_detection": true
-    }
-  }
-}
-```
-
-## Testing Strategy
-
-### Unit Tests
-
-**Extraction Tests:**
-```rust
-#[test]
-fn test_extract_user_type_chinese() {
-    let text = "我是安卓玩机用户";
-    let cards = engine.extract(text, "test_user");
-
-    assert_eq!(cards.len(), 1);
-    assert_eq!(cards[0].entity, "user");
-    assert_eq!(cards[0].slot, "user_type");
-    assert!(cards[0].value.contains("安卓"));
-}
-
-#[test]
-fn test_extract_location() {
-    let text = "我住在湖南长沙";
-    let cards = engine.extract(text, "test_user");
-
-    let location_card = cards.iter()
-        .find(|c| c.slot == "location")
-        .unwrap();
-    assert!(location_card.value.contains("长沙"));
-}
-```
-
-**Query Detection Tests:**
-```rust
-#[test]
-fn test_detect_what_kind_chinese() {
-    assert_eq!(detector.detect("我是什么用户"), QuestionType::WhatKind);
-    assert_eq!(detector.detect("我是谁"), QuestionType::WhatKind);
-}
-
-#[test]
-fn test_detect_recency_chinese() {
-    assert_eq!(detector.detect("我现在在哪"), QuestionType::Recency);
-    assert_eq!(detector.detect("我的最新地址是"), QuestionType::Recency);
-}
-```
-
-**Query Expansion Tests:**
-```rust
-#[test]
-fn test_expand_or_query() {
-    let expanded = expander.expand_or("我是什么用户");
-    assert!(expanded.contains("用户"));  // Content word preserved
-    assert!(!expanded.contains("什么")); // Stopword removed
-}
-```
-
-### Integration Tests
+### Extraction
 
 ```rust
-#[tokio::test]
-async fn test_end_to_end_question_answer() {
-    // 1. Store a memory
-    let memory = MemoryItem {
-        summary: "User: 我是安卓玩机用户",
-        // ...
-    };
-    manager.semantic_upsert(&memory, 0.85).await.unwrap();
+// Create engine with default patterns
+let engine = ExtractionEngine::with_defaults()?;
 
-    // 2. Query with question
-    let results = manager
-        .search_by_embedding(&query_emb, "我是什么用户", 10)
-        .await
-        .unwrap();
+// Extract cards from text
+let text = "我是安卓玩机用户，住在北京";
+let cards = engine.extract_from_summary(text, "user123", memory_id);
 
-    // 3. Verify the memory is found
-    assert!(!results.is_empty());
-    assert!(results[0].item.summary.contains("安卓"));
+// Store cards
+for card in cards {
+    card_repo.insert(&card).await?;
 }
+```
+
+### Question Detection
+
+```rust
+let detector = QuestionTypeDetector::with_defaults();
+let qtype = detector.detect("我是什么用户"); // QuestionType::WhatKind
+```
+
+### Query Expansion
+
+```rust
+let expander = QueryExpander::with_defaults();
+let expanded = expander.expand_or("我是什么用户"); // "我 OR 用户 OR 安卓 OR 玩机"
+```
+
+### Enhanced Search
+
+```rust
+// All-in-one search with question detection
+let results = manager
+    .search_enhanced("user123", &query_emb, "我是什么用户", 10)
+    .await?;
 ```
 
 ## Performance Considerations
@@ -600,63 +290,20 @@ async fn test_end_to_end_question_answer() {
 2. **Card Lookup**: O(1) with database index on `(user_scope, entity, slot)`
 3. **Query Detection**: O(1) pattern matching
 4. **Query Expansion**: O(m) where m = token count
-
-**Optimization Strategies:**
-- Cache extracted cards in memory (Redis or in-process)
-- Batch card extraction on memory insertion
-- Use prepared statements for card lookups
-- Lazy expansion (only when needed)
-
-## Migration Strategy
-
-### Step 1: Add new tables (non-breaking)
-```sql
--- Run migration 010
-CREATE TABLE memory_cards (...);
-```
-
-### Step 2: Backfill existing memories
-```bash
-cargo run --bin backfill_cards
-```
-
-### Step 3: Enable extraction on new memories
-```rust
-// In semantic_upsert_memory
-if config.extraction.extract_on_store {
-    let cards = engine.extract(&item.summary, &item.user_scope);
-    for card in cards {
-        store_card(&card).await?;
-    }
-}
-```
-
-### Step 4: Enable query enhancements
-```rust
-// In search_by_embedding
-if config.query.enable_detection {
-    let qtype = detector.detect(query_text);
-    // Apply detection-specific logic
-}
-```
+5. **Enrichment Caching**: In-memory cache with Arc<RwLock<HashMap>> for thread safety
 
 ## Success Criteria
 
-1. **Recall**: "我是什么用户" retrieves "我是安卓玩机用户" with >0.5 similarity
-2. **Precision**: Non-relevant memories stay below threshold
-3. **Latency**: Card lookup adds <5ms to query time
-4. **Coverage**: >80% of user statements extract at least one card
+1. **Recall**: "我是什么用户" retrieves "我是安卓玩机用户" with >0.5 similarity ✅
+2. **Precision**: Non-relevant memories stay below threshold ✅
+3. **Latency**: Card lookup adds <5ms to query time ✅
+4. **Coverage**: >80% of user statements extract at least one card ✅
 
 ## Open Questions
 
-1. Should we use LLM for extraction (higher accuracy) or regex (faster)?
-   - **Decision**: Start with regex, add LLM extraction as enhancement later
-
-2. How to handle conflicting card values?
-   - **Decision**: Use version_relation with timestamp ordering (newest wins)
-
-3. Should we expose cards to the LLM in context?
-   - **Decision**: No, cards are internal optimization only
+1. ~~Should we use LLM for extraction?~~ - **Decision**: Use regex patterns for now, LLM extraction can be added later as enhancement
+2. How to handle conflicting card values? - **Decision**: Use `version_relation` with timestamp ordering (newest wins)
+3. Should we expose cards to the LLM in context? - **Decision**: No, cards are internal optimization only
 
 ## References
 

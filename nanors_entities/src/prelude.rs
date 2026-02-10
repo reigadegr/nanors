@@ -3,5 +3,4 @@
 pub use super::enrichment_records::Entity as EnrichmentRecords;
 pub use super::memory_cards::Entity as MemoryCards;
 pub use super::memory_items::Entity as MemoryItems;
-pub use super::query_expansions::Entity as QueryExpansions;
 pub use super::sessions::Entity as Sessions;
