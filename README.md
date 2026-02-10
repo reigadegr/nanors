@@ -9,7 +9,9 @@ nanors 的 Rust 实现，采用渐进式开发策略和 workspace 架构。
 - **app**: CLI 入口
 - **nanors_core**: 核心抽象（agent, tools, 配置）
 - **nanors_providers**: LLM Provider 实现（智谱 GLM）
-- **nanors_session**: 会话管理（Sea-ORM + SQLite）
+- **nanors_conversation**: 多轮对话管理（持久化会话）
+- **nanors_memory**: 长期记忆管理（向量检索 + Rerank）
+- **nanors_entities**: 数据库实体（Sea-ORM 生成）
 - **nanors_config**: 配置管理
 
 ```
@@ -18,16 +20,30 @@ nanors/
 ├── debug.sh               # 格式化 + clippy 检查
 ├── fix.sh                 # 自动修复 clippy 警告
 ├── app/                  # CLI 入口
-│   └── src/main.rs
+│   └── src/
+│       ├── main.rs
+│       └── command/      # 命令实现
+│           ├── mod.rs
+│           ├── agent.rs  # 单轮对话命令
+│           └── chat.rs   # 多轮对话命令（新）
 ├── nanors_core/          # 核心抽象
 │   ├── src/lib.rs
 │   ├── src/agent/
 │   └── src/tools/
 ├── nanors_providers/      # LLM Provider (智谱 GLM)
 │   └── src/
-├── nanors_session/        # SQLite 会话管理
+├── nanors_conversation/   # 多轮对话管理（新）
 │   └── src/
-│       └── entity/       # Sea-ORM entity
+│       ├── manager.rs    # ConversationManager
+│       ├── history.rs    # HistoryManager
+│       └── session.rs    # 会话状态
+├── nanors_memory/         # 长期记忆管理
+│   └── src/
+│       ├── mod.rs
+│       ├── rerank/       # 检索重排序
+│       └── query/        # 问题类型检测
+├── nanors_entities/       # 数据库实体
+│   └── src/              # Sea-ORM 生成
 └── nanors_config/        # 配置管理
     └── src/
 ```
@@ -96,20 +112,51 @@ nanors init
 {
   "agents": {
     "defaults": {
-      "model": "glm-4.7",
+      "model": "glm-4-flash",
       "max_tokens": 8192,
-      "temperature": 0.7
+      "temperature": 0.7,
+      "system_prompt": "You are a helpful AI assistant with memory of past conversations. Provide clear, concise responses.",
+      "history_limit": 20
     }
   },
   "providers": {
     "zhipu": {
-      "api_key": "your-zhipu-api-key"
+      "api_key": "your-zhipu-api-key-here"
+    }
+  },
+  "database": {
+    "url": "postgresql://reigadegr:1234@localhost:5432/nanors"
+  },
+  "memory": {
+    "enabled": true,
+    "default_user_scope": "default",
+    "retrieval": {
+      "items_top_k": 10,
+      "context_target_length": 2000,
+      "adaptive": {
+        "enabled": true,
+        "min_items": 5,
+        "max_items": 50
+      }
     }
   }
 }
 ```
 
+**配置说明：**
+
+| 字段 | 说明 | 默认值 |
+|------|------|--------|
+| `agents.defaults.model` | 使用的模型 | `glm-4-flash` |
+| `agents.defaults.max_tokens` | 最大 token 数 | `8192` |
+| `agents.defaults.temperature` | 温度参数 | `0.7` |
+| `agents.defaults.history_limit` | 多轮对话历史条数 | `20` |
+| `database.url` | 数据库连接 URL | PostgreSQL 格式 |
+| `memory.enabled` | 是否启用长期记忆 | `true` |
+
 ### 3. 运行
+
+#### 单轮对话（无状态）
 
 交互式对话：
 
@@ -129,11 +176,43 @@ nanors agent -m "你好"
 nanors agent -m "你好" --model glm-4.7
 ```
 
+#### 多轮对话（持久化会话）**新功能**
+
+启动带会话持久化的对话：
+
+```bash
+nanors chat
+```
+
+指定会话名称：
+
+```bash
+nanors chat --name "项目讨论"
+```
+
+恢复已有会话：
+
+```bash
+nanors chat --session <SESSION_ID>
+```
+
+单次消息发送（非交互模式）：
+
+```bash
+nanors chat -m "接着刚才的话题继续"
+```
+
+自定义历史记录条数：
+
+```bash
+nanors chat --history-limit 50
+```
+
 ## 命令说明
 
-### `nanors agent`
+### `nanors agent` - 单轮对话
 
-运行 AI 助手。
+运行 AI 助手（无状态模式，每次对话独立）。
 
 **选项：**
 - `-m, --message <MESSAGE>`: 发送单次消息
@@ -151,6 +230,42 @@ nanors agent -m "今天天气怎么样？"
 # 指定模型
 nanors agent -m "你好" -M glm-4.7
 ```
+
+### `nanors chat` - 多轮对话 **新功能**
+
+运行持久化会话的多轮对话（会话状态自动保存）。
+
+**选项：**
+- `-m, --message <MESSAGE>`: 发送单次消息（非交互模式）
+- `-M, --model <MODEL>`: 指定使用的模型
+- `--name <NAME>`: 设置会话名称
+- `--session <SESSION_ID>`: 恢复已有会话
+- `--history-limit <N>`: 设置历史记录条数
+
+**示例：**
+
+```bash
+# 启动新的多轮对话
+nanors chat
+
+# 命名会话
+nanors chat --name "学习 Rust"
+
+# 恢复已有会话
+nanors chat --session 0193abcd-1234-5678-9012-abcdef123456
+
+# 单次消息（会话继续）
+nanors chat -m "继续刚才的话题"
+
+# 设置历史记录条数
+nanors chat --history-limit 50
+```
+
+**特性：**
+- 会话自动保存到数据库
+- 支持上下文记忆（可配置历史窗口）
+- 支持会话恢复
+- Token 使用统计
 
 ### `nanors init`
 
@@ -218,10 +333,24 @@ export RUSTFLAGS="-Z function-sections=yes -C link-arg=-fuse-ld=/usr/bin/mold -C
 - ✅ 智谱 GLM 集成
 - ✅ SQLite 会话持久化（Sea-ORM）
 - ✅ 基础工具框架
-- ✅ Workspace 架构（5 个 crate）
+- ✅ Workspace 架构（6 个 crate）
 - ✅ 完整的 clippy 检查（pedantic、nursery 等）
 - ✅ 生产级技术栈（与 pmi-rust-backend 一致）
 - ✅ 所有配置和数据统一在 `~/nanors` 目录
+
+## 第二阶段功能（新增）
+
+- ✅ 多轮对话管理（`nanors_conversation`）
+  - 会话持久化
+  - 上下文历史管理
+  - 会话恢复支持
+  - Token 使用统计
+- ✅ 长期记忆管理（`nanors_memory`）
+  - 向量检索
+  - 问题类型检测
+  - 智能重排序（Rerank）
+- ✅ IvorySQL/PostgreSQL 数据库支持
+- ✅ 0 clippy 警告（pedantic + nursery 标准）
 
 ## 代码规范
 
@@ -256,11 +385,11 @@ export RUSTFLAGS="-Z function-sections=yes -C link-arg=-fuse-ld=/usr/bin/mold -C
 
 通过 Sea-ORM 支持多种数据库：
 
-- PostgreSQL
+- IvorySQL / PostgreSQL（默认）
 - MySQL
 - SQLite
 
-默认使用 SQLite，可根据需要切换到 PostgreSQL 或 MySQL。
+默认使用 IvorySQL（兼容 PostgreSQL），可根据需要切换到其他数据库。
 
 ## 文件结构
 

@@ -6,6 +6,7 @@ members = [
   "nanors_config",
   "nanors_entities",
   "nanors_memory",
+  "nanors_conversation",
 ]
 resolver = "3"
 
@@ -58,6 +59,11 @@ sha2 = "0.10"
 regex = "1.11"
 rayon = "1.10"
 once_cell = "1.21"
+
+# Rig - LLM application framework
+rig-core = { git = "https://github.com/0xPlaygrounds/rig", features = [
+  "derive",
+] }
 
 [profile.dev]
 debug = true

@@ -12,6 +12,7 @@ use std::sync::Arc;
 use tracing::info;
 
 mod agent;
+mod chat;
 mod info;
 mod init;
 mod version;
@@ -44,6 +45,7 @@ fn setup_memory_storage(
 }
 
 pub use agent::{AgentInput, AgentStrategy};
+pub use chat::{ChatInput, ChatStrategy};
 pub use info::InfoStrategy;
 pub use init::InitStrategy;
 pub use version::VersionStrategy;

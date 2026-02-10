@@ -22,9 +22,11 @@ mod command;
 use clap::{Parser, Subcommand};
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
+use uuid::Uuid;
 
 use command::{
-    AgentInput, AgentStrategy, CommandStrategy, InfoStrategy, InitStrategy, VersionStrategy,
+    AgentInput, AgentStrategy, ChatInput, ChatStrategy, CommandStrategy, InfoStrategy,
+    InitStrategy, VersionStrategy,
 };
 
 #[derive(Parser)]
@@ -37,7 +39,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Run agent interactively
+    /// Run agent interactively (single-turn, creates new session per message)
     Agent {
         /// Single message to send
         #[arg(short = 'm', long)]
@@ -46,6 +48,28 @@ enum Commands {
         /// Model to use
         #[arg(short = 'M', long)]
         model: Option<String>,
+    },
+    /// Multi-turn conversation with persistent session
+    Chat {
+        /// Resume existing session by ID
+        #[arg(short = 's', long)]
+        session: Option<String>,
+
+        /// Single message to send (non-interactive mode)
+        #[arg(short = 'm', long)]
+        message: Option<String>,
+
+        /// Model to use
+        #[arg(short = 'M', long)]
+        model: Option<String>,
+
+        /// Session name (for new sessions)
+        #[arg(short = 'n', long)]
+        name: Option<String>,
+
+        /// Number of messages to keep in context
+        #[arg(short = 'H', long)]
+        history: Option<usize>,
     },
     /// Initialize configuration
     Init,
@@ -71,6 +95,24 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Agent { message, model } => {
             AgentStrategy.execute(AgentInput { message, model }).await?;
+        }
+        Commands::Chat {
+            session,
+            message,
+            model,
+            name,
+            history,
+        } => {
+            let session_id = session.and_then(|s| Uuid::parse_str(&s).ok());
+            ChatStrategy
+                .execute(ChatInput {
+                    session_id,
+                    message,
+                    model,
+                    session_name: name,
+                    history_limit: history,
+                })
+                .await?;
         }
         Commands::Init => {
             InitStrategy.execute(()).await?;

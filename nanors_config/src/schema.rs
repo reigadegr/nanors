@@ -30,7 +30,7 @@ impl Default for DatabaseConfig {
 
 impl DatabaseConfig {
     fn default_url() -> String {
-        "mysql://username:password@localhost:3306/nanors".to_string()
+        "postgresql://reigadegr:1234@localhost:5432/nanors".to_string()
     }
 }
 
@@ -47,7 +47,7 @@ pub struct MemoryConfig {
 impl Default for MemoryConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,
             default_user_scope: Self::default_user_scope(),
             retrieval: RetrievalConfig::default(),
         }
@@ -70,6 +70,10 @@ pub struct AgentDefaults {
     pub model: String,
     pub max_tokens: usize,
     pub temperature: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub history_limit: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -124,38 +128,54 @@ impl Config {
             );
         }
 
-        let config = Self {
-            agents: AgentsConfig {
-                defaults: AgentDefaults {
-                    model: "glm-4.7-flash".to_string(),
-                    max_tokens: 8192,
-                    temperature: 0.7,
-                },
-            },
-            providers: ProvidersConfig {
-                zhipu: ProviderConfig {
-                    api_key: "your-zhipu-api-key-here".to_string(),
-                },
-            },
-            database: DatabaseConfig {
-                url: "mysql://username:password@localhost:3306/nanors".to_string(),
-            },
-            memory: MemoryConfig {
-                enabled: false,
-                default_user_scope: "default".to_string(),
-                retrieval: RetrievalConfig {
-                    items_top_k: 10,
-                    context_target_length: 2000,
-                    adaptive: nanors_core::retrieval::adaptive::AdaptiveConfig::default(),
-                },
-            },
-        };
+        // 使用模板生成配置文件
+        let config_template = r#"{
+  "agents": {
+    "defaults": {
+      "model": "glm-4-flash",
+      "max_tokens": 8192,
+      "temperature": 0.7,
+      "system_prompt": "You are a helpful AI assistant with memory of past conversations. Provide clear, concise responses.",
+      "history_limit": 20
+    }
+  },
+  "providers": {
+    "zhipu": {
+      "api_key": "your-zhipu-api-key-here"
+    }
+  },
+  "database": {
+    "url": "postgresql://reigadegr:1234@localhost:5432/nanors"
+  },
+  "memory": {
+    "enabled": true,
+    "default_user_scope": "default",
+    "retrieval": {
+      "items_top_k": 10,
+      "context_target_length": 2000,
+      "adaptive": {
+        "enabled": true,
+        "min_items": 5,
+        "max_items": 50
+      }
+    }
+  }
+}"#;
 
-        let content = serde_json::to_string_pretty(&config)?;
-        std::fs::write(&config_path, content)?;
+        std::fs::write(&config_path, config_template)?;
 
-        println!("Created config file at: {}", config_path.display());
-        println!("Please edit it and add your Zhipu API key.");
+        println!("✅ Created config file at: {}", config_path.display());
+        println!();
+        println!("📝 Next steps:");
+        println!("   1. Edit the config file and add your Zhipu API key");
+        println!("   2. Ensure IvorySQL/PostgreSQL is running at the specified URL");
+        println!("   3. Run 'nanors chat' to start a conversation");
+        println!();
+        println!("🔧 Configuration options:");
+        println!("   - model: AI model to use (glm-4-flash, glm-4-plus, glm-4-0520, etc.)");
+        println!("   - history_limit: Number of messages to keep in context (for chat command)");
+        println!("   - memory.enabled: Enable long-term memory features");
+        println!();
         Ok(())
     }
 }

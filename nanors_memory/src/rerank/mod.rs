@@ -128,27 +128,28 @@ impl RuleBasedReranker {
         match question_type {
             QuestionType::WhatKind => {
                 // Profile + Profession
-                (self.get_keyword_match_count(&summary_lower, QUESTION_KEYWORDS[0].1) as f64)
+                (Self::get_keyword_match_count(&summary_lower, QUESTION_KEYWORDS[0].1) as f64)
                     .mul_add(
                         self.profile_boost_weight,
-                        self.get_keyword_match_count(&summary_lower, QUESTION_KEYWORDS[4].1) as f64
+                        Self::get_keyword_match_count(&summary_lower, QUESTION_KEYWORDS[4].1)
+                            as f64
                             * self.keyword_boost_weight
                             * 1.2,
                     )
             }
             QuestionType::Where => {
                 // Location (based on match count)
-                let count = self.get_keyword_match_count(&summary_lower, QUESTION_KEYWORDS[1].1);
+                let count = Self::get_keyword_match_count(&summary_lower, QUESTION_KEYWORDS[1].1);
                 (count as f64) * self.keyword_boost_weight
             }
             QuestionType::Preference => {
                 // Preference (higher weight)
-                let count = self.get_keyword_match_count(&summary_lower, QUESTION_KEYWORDS[2].1);
+                let count = Self::get_keyword_match_count(&summary_lower, QUESTION_KEYWORDS[2].1);
                 (count as f64) * self.keyword_boost_weight * 1.5
             }
             QuestionType::HowMany => {
                 // Count
-                let count = self.get_keyword_match_count(&summary_lower, QUESTION_KEYWORDS[3].1);
+                let count = Self::get_keyword_match_count(&summary_lower, QUESTION_KEYWORDS[3].1);
                 (count as f64) * self.keyword_boost_weight
             }
             QuestionType::Recency => {
@@ -173,7 +174,7 @@ impl RuleBasedReranker {
     }
 
     /// Get keyword match count for a keyword list.
-    fn get_keyword_match_count(&self, summary: &str, keywords: &[&str]) -> usize {
+    fn get_keyword_match_count(summary: &str, keywords: &[&str]) -> usize {
         keywords.iter().filter(|k| summary.contains(*k)).count()
     }
 
