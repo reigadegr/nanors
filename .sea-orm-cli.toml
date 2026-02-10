@@ -4,7 +4,7 @@
 [database]
 # Database connection URL - update with your actual database credentials
 # Format: protocol://username:password@hostname:port/database
-url = "postgresql://username:password@localhost:5432/nanors"
+url = "postgresql://reigadegr:1234@127.0.0.1:5432/nanors"
 
 # Max connections for the connection pool
 max_connections = 10

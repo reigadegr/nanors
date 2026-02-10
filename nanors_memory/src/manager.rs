@@ -14,7 +14,6 @@ use uuid::Uuid;
 
 use crate::convert;
 use crate::dedup;
-use crate::enrichment::EnrichmentManifest;
 use crate::extraction::DatabaseCardRepository;
 use crate::query::{QueryExpander, QuestionTypeDetector};
 use crate::rerank::{Reranker, RuleBasedReranker};
@@ -36,8 +35,6 @@ pub struct MemoryManager {
     pub(crate) question_detector: QuestionTypeDetector,
     /// Query expansion for improved recall
     pub(crate) query_expander: QueryExpander,
-    /// Manifest for enrichment operations
-    pub(crate) enrichment_manifest: EnrichmentManifest,
     /// Reranker for result relevance tuning
     pub(crate) reranker: Box<dyn Reranker>,
     /// Optional conversation segmenter
@@ -52,14 +49,12 @@ impl MemoryManager {
     pub async fn new(database_url: &str) -> anyhow::Result<Self> {
         info!("Connecting to database for MemoryManager");
         let db = Database::connect(database_url).await?;
-        let enrichment_manifest = EnrichmentManifest::with_database(db.clone());
         info!("MemoryManager initialized");
         Ok(Self {
             db: db.clone(),
             card_repo: DatabaseCardRepository::new(db),
             question_detector: QuestionTypeDetector::with_defaults(),
             query_expander: QueryExpander::with_defaults(),
-            enrichment_manifest,
             reranker: Box::new(RuleBasedReranker::new()),
             segmenter: None,
         })
@@ -97,14 +92,12 @@ impl MemoryManager {
     {
         info!("Connecting to database for MemoryManager");
         let db = Database::connect(database_url).await?;
-        let enrichment_manifest = EnrichmentManifest::with_database(db.clone());
         info!("MemoryManager initialized with custom reranker");
         Ok(Self {
             db: db.clone(),
             card_repo: DatabaseCardRepository::new(db),
             question_detector: QuestionTypeDetector::with_defaults(),
             query_expander: QueryExpander::with_defaults(),
-            enrichment_manifest,
             reranker: Box::new(reranker),
             segmenter: None,
         })
@@ -126,12 +119,6 @@ impl MemoryManager {
     #[must_use]
     pub const fn query_expander(&self) -> &QueryExpander {
         &self.query_expander
-    }
-
-    /// Get a reference to the enrichment manifest.
-    #[must_use]
-    pub const fn enrichment_manifest(&self) -> &EnrichmentManifest {
-        &self.enrichment_manifest
     }
 
     /// Set a conversation segmenter for automatic conversation segmentation

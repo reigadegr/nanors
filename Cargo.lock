@@ -1402,6 +1402,7 @@ dependencies = [
  "chrono",
  "nanors_core",
  "nanors_entities",
+ "once_cell",
  "rayon",
  "regex",
  "sea-orm",

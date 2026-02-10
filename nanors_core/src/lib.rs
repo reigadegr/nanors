@@ -29,13 +29,10 @@ pub mod agent;
 pub mod conversation;
 pub mod memory;
 pub mod retrieval;
-pub mod tools;
 
 pub use agent::{AgentConfig, AgentLoop};
 pub use conversation::{ConversationSegment, ConversationSegmenter, SegmentationConfig};
 pub use memory::{MemoryItem, MemoryItemRepo, MemoryType, SalienceScore};
-pub use retrieval::{CategoryCompressor, SufficiencyChecker};
-pub use tools::{Tool, ToolRegistry};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]

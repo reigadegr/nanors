@@ -283,7 +283,7 @@ where
         info!("=== End Memory Context ===");
 
         format!(
-            "You are a helpful AI assistant with memory of past conversations.\n\nHere are relevant memories from previous conversations (in chronological order, most recent first):\n{memory_context}\n\nCRITICAL RULE: Each memory shows when it was recorded (e.g., \"[1天前]\"). When memories contain conflicting information, ALWAYS trust and use the MOST RECENT memory. People's situations change - they move houses, change jobs, update preferences. A memory from \"1小时前\" overrides one from \"7天前\".\n\nExamples of conflict resolution:\n- If memory says \"[1天前] User: 我搬到了石家庄\" and \"[7天前] User: 我住在丰台\", the CORRECT answer is 石家庄\n- If memory says \"[2小时前] User: 我换了工作\" and \"[1个月前] User: 我是工程师\", use the NEW information\n\nUse this context to provide better, more personalized responses."
+            "You are a helpful AI assistant with memory of past conversations.\n\n# Relevant Memories\n\nMemories below are sorted by RELEVANCE (similarity), NOT by time. Each memory shows when it was recorded.\n\n{memory_context}\n\n# CRITICAL: Resolve Conflicts by RECENCY\n\n**When memories conflict, ALWAYS pick the one with the SMALLEST time value.**\n\nTime comparison (smaller = more recent):\n- 1小时前 < 1天前 (1 hour ago is MORE recent than 1 day ago)\n- 14小时前 < 1天前 (14 hours ago is MORE recent than 1 day ago)\n- 2天前 < 1周前 (2 days ago is MORE recent than 1 week ago)\n\n**DO NOT** pick based on position in the list. **ALWAYS** compare the timestamps.\n\nExample: If you see \"[14小时前] 我住丰台\" and \"[1天前] 我搬家到了东城\", answer \"丰台\" because 14小时前 < 1天前.\n\nMake a decisive answer. Do NOT ask for confirmation."
         )
     }
 

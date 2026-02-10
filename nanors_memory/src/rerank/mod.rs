@@ -28,6 +28,56 @@ pub trait Reranker: Send + Sync {
     ) -> Vec<SalienceScore<MemoryItem>>;
 }
 
+/// Keyword definitions for different question types.
+const QUESTION_KEYWORDS: &[(&str, &[&str])] = &[
+    (
+        "profile",
+        &[
+            "用户", "user", "类型", "type", "角色", "role", "身份", "identity",
+        ],
+    ),
+    (
+        "location",
+        &[
+            "住", "居住", "位置", "location", "地点", "place", "城市", "city", "地址", "address",
+        ],
+    ),
+    (
+        "preference",
+        &[
+            "喜欢",
+            "爱",
+            "偏好",
+            "prefer",
+            "爱好",
+            "hobby",
+            "感兴趣",
+            "interest",
+        ],
+    ),
+    (
+        "count",
+        &["个", "只", "次", "数量", "count", "number", "total", "一共"],
+    ),
+    (
+        "profession",
+        &[
+            "工作",
+            "就职",
+            "公司",
+            "company",
+            "work",
+            "job",
+            "职业",
+            "profession",
+            "工程师",
+            "engineer",
+            "开发",
+            "developer",
+        ],
+    ),
+];
+
 /// Rule-based reranker that applies question-type-specific boosts.
 ///
 /// This reranker uses zero external dependencies and adds minimal latency
@@ -71,48 +121,65 @@ impl RuleBasedReranker {
         }
     }
 
-    /// Calculate profile boost for "what kind" questions.
-    ///
-    /// Boosts memories that contain profile indicators like "用户" (user),
-    /// "类型" (type), "角色" (role), etc.
-    fn profile_boost(&self, item: &MemoryItem, _query: &str) -> f64 {
+    /// Compute boost based on question type.
+    fn compute_boost(&self, item: &MemoryItem, question_type: QuestionType) -> f64 {
         let summary_lower = item.summary.to_lowercase();
-        let profile_keywords = [
-            "用户", "user", "类型", "type", "角色", "role", "身份", "identity",
-        ];
 
-        let has_profile = profile_keywords
-            .iter()
-            .any(|keyword| summary_lower.contains(*keyword));
-        if has_profile {
-            self.profile_boost_weight
-        } else {
-            0.0
+        match question_type {
+            QuestionType::WhatKind => {
+                // Profile + Profession
+                (self.get_keyword_match_count(&summary_lower, QUESTION_KEYWORDS[0].1) as f64)
+                    .mul_add(
+                        self.profile_boost_weight,
+                        self.get_keyword_match_count(&summary_lower, QUESTION_KEYWORDS[4].1) as f64
+                            * self.keyword_boost_weight
+                            * 1.2,
+                    )
+            }
+            QuestionType::Where => {
+                // Location (based on match count)
+                let count = self.get_keyword_match_count(&summary_lower, QUESTION_KEYWORDS[1].1);
+                (count as f64) * self.keyword_boost_weight
+            }
+            QuestionType::Preference => {
+                // Preference (higher weight)
+                let count = self.get_keyword_match_count(&summary_lower, QUESTION_KEYWORDS[2].1);
+                (count as f64) * self.keyword_boost_weight * 1.5
+            }
+            QuestionType::HowMany => {
+                // Count
+                let count = self.get_keyword_match_count(&summary_lower, QUESTION_KEYWORDS[3].1);
+                (count as f64) * self.keyword_boost_weight
+            }
+            QuestionType::Recency => {
+                // Recency decay
+                self.recency_boost(item)
+            }
+            QuestionType::When
+            | QuestionType::Have
+            | QuestionType::Can
+            | QuestionType::Update
+            | QuestionType::Generic => {
+                // Generic keyword overlap
+                let keyword_overlap =
+                    scoring::keyword_overlap(&item.summary, summary_lower.as_str());
+                if keyword_overlap > 0.3 {
+                    self.keyword_boost_weight
+                } else {
+                    0.0
+                }
+            }
         }
     }
 
-    /// Calculate location boost for "where" questions.
-    ///
-    /// Boosts memories that contain location indicators like "住" (live),
-    /// "在" (at), "位置" (location), etc.
-    fn location_boost(&self, item: &MemoryItem, _query: &str) -> f64 {
-        let summary_lower = item.summary.to_lowercase();
-        let location_keywords = [
-            "住", "居住", "位置", "location", "地点", "place", "城市", "city", "地址", "address",
-        ];
-
-        let match_count = location_keywords
-            .iter()
-            .filter(|keyword| summary_lower.contains(**keyword))
-            .count();
-
-        // Boost based on number of location keyword matches
-        (match_count as f64) * self.keyword_boost_weight
+    /// Get keyword match count for a keyword list.
+    fn get_keyword_match_count(&self, summary: &str, keywords: &[&str]) -> usize {
+        keywords.iter().filter(|k| summary.contains(*k)).count()
     }
 
-    /// Calculate recency boost for "recent/current" questions.
+    /// Calculate recency boost using exponential decay.
     ///
-    /// Uses exponential decay: more recent memories get higher boost.
+    /// More recent memories get higher boost.
     fn recency_boost(&self, item: &MemoryItem) -> f64 {
         let hours_ago = (Utc::now() - item.happened_at).num_hours().max(0) as f64;
         // Exponential decay: 24 hours = full boost, decays over time
@@ -120,116 +187,9 @@ impl RuleBasedReranker {
         decay * self.recency_boost_weight
     }
 
-    /// Calculate preference boost for "what do you like" questions.
-    ///
-    /// Boosts memories containing preference indicators.
-    fn preference_boost(&self, item: &MemoryItem, _query: &str) -> f64 {
-        let summary_lower = item.summary.to_lowercase();
-        let preference_keywords = [
-            "喜欢",
-            "爱",
-            "偏好",
-            "prefer",
-            "like",
-            "love",
-            "爱好",
-            "hobby",
-            "感兴趣",
-            "interest",
-        ];
-
-        let has_preference = preference_keywords
-            .iter()
-            .any(|keyword| summary_lower.contains(*keyword));
-
-        if has_preference {
-            self.keyword_boost_weight * 1.5 // Higher boost for preferences
-        } else {
-            0.0
-        }
-    }
-
-    /// Calculate count boost for "how many" questions.
-    ///
-    /// Boosts memories containing numeric quantities or count indicators.
-    fn count_boost(&self, item: &MemoryItem, _query: &str) -> f64 {
-        let summary_lower = item.summary.to_lowercase();
-        let count_keywords = ["个", "只", "次", "数量", "count", "number", "total", "一共"];
-
-        // Check if memory contains numbers or count keywords
-        let has_numbers = summary_lower.chars().any(|c| c.is_ascii_digit());
-        let has_count_keywords = count_keywords
-            .iter()
-            .any(|keyword| summary_lower.contains(*keyword));
-
-        if has_numbers || has_count_keywords {
-            self.keyword_boost_weight
-        } else {
-            0.0
-        }
-    }
-
-    /// Calculate work/profession boost for profile-related questions.
-    ///
-    /// Boosts memories containing work/profession indicators.
-    fn profession_boost(&self, item: &MemoryItem, _query: &str) -> f64 {
-        let summary_lower = item.summary.to_lowercase();
-        let profession_keywords = [
-            "工作",
-            "就职",
-            "公司",
-            "company",
-            "work",
-            "job",
-            "职业",
-            "profession",
-            "工程师",
-            "engineer",
-            "开发",
-            "developer",
-        ];
-
-        let has_profession = profession_keywords
-            .iter()
-            .any(|keyword| summary_lower.contains(*keyword));
-
-        if has_profession {
-            self.keyword_boost_weight * 1.2
-        } else {
-            0.0
-        }
-    }
-
     /// Apply question-type-specific boost to a single result.
-    fn apply_boost(
-        &self,
-        result: &mut SalienceScore<MemoryItem>,
-        question_type: QuestionType,
-        query: &str,
-    ) {
-        let boost = match question_type {
-            QuestionType::WhatKind => {
-                // Combine profile and profession boosts
-                self.profile_boost(&result.item, query) + self.profession_boost(&result.item, query)
-            }
-            QuestionType::Where => self.location_boost(&result.item, query),
-            QuestionType::Preference => self.preference_boost(&result.item, query),
-            QuestionType::HowMany => self.count_boost(&result.item, query),
-            QuestionType::Recency => self.recency_boost(&result.item),
-            QuestionType::When
-            | QuestionType::Have
-            | QuestionType::Can
-            | QuestionType::Update
-            | QuestionType::Generic => {
-                // Generic keyword boost for other question types
-                let keyword_overlap = scoring::keyword_overlap(query, &result.item.summary);
-                if keyword_overlap > 0.3 {
-                    self.keyword_boost_weight
-                } else {
-                    0.0
-                }
-            }
-        };
+    fn apply_boost(&self, result: &mut SalienceScore<MemoryItem>, question_type: QuestionType) {
+        let boost = self.compute_boost(&result.item, question_type);
 
         // Apply boost multiplicatively: score *= (1 + boost)
         if boost > 0.0 {
@@ -255,7 +215,7 @@ impl Reranker for RuleBasedReranker {
 
         // Apply question-type-specific boosts
         for result in &mut results {
-            self.apply_boost(result, question_type, query_text);
+            self.apply_boost(result, question_type);
         }
 
         // Re-sort by adjusted scores
@@ -323,29 +283,26 @@ mod tests {
     }
 
     #[test]
-    fn test_profile_boost() {
+    fn test_compute_boost_profile() {
         let reranker = RuleBasedReranker::new();
 
-        // Memory with "用户" (user) keyword
         let profile_memory = create_test_memory("User: 我是Android用户", 1);
-        let boost = reranker.profile_boost(&profile_memory, "");
+        let boost = reranker.compute_boost(&profile_memory, QuestionType::WhatKind);
 
         assert!(boost > 0.0, "Profile memory should get boost");
     }
 
     #[test]
-    fn test_location_boost() {
+    fn test_compute_boost_location() {
         let reranker = RuleBasedReranker::new();
 
-        // Memory with "住" (live) keyword
         let location_memory = create_test_memory("User: 我住在西城区", 1);
-        let boost = reranker.location_boost(&location_memory, "");
+        let boost = reranker.compute_boost(&location_memory, QuestionType::Where);
 
         assert!(boost > 0.0, "Location memory should get boost");
 
-        // Memory with multiple location keywords
         let multi_location = create_test_memory("User: 我居住在北京这个位置", 1);
-        let boost_multi = reranker.location_boost(&multi_location, "");
+        let boost_multi = reranker.compute_boost(&multi_location, QuestionType::Where);
 
         assert!(
             boost_multi > boost,
@@ -354,16 +311,14 @@ mod tests {
     }
 
     #[test]
-    fn test_recency_boost() {
+    fn test_compute_boost_recency() {
         let reranker = RuleBasedReranker::new();
 
-        // Recent memory (1 hour ago)
         let recent = create_test_memory("User: 测试", 1);
-        let boost_recent = reranker.recency_boost(&recent);
+        let boost_recent = reranker.compute_boost(&recent, QuestionType::Recency);
 
-        // Old memory (100 hours ago)
         let old = create_test_memory("User: 测试", 100);
-        let boost_old = reranker.recency_boost(&old);
+        let boost_old = reranker.compute_boost(&old, QuestionType::Recency);
 
         assert!(
             boost_recent > boost_old,
@@ -372,18 +327,16 @@ mod tests {
     }
 
     #[test]
-    fn test_preference_boost() {
+    fn test_compute_boost_preference() {
         let reranker = RuleBasedReranker::new();
 
-        // Memory with "喜欢" (like) keyword
         let preference_memory = create_test_memory("User: 我喜欢红色", 1);
-        let boost = reranker.preference_boost(&preference_memory, "");
+        let boost = reranker.compute_boost(&preference_memory, QuestionType::Preference);
 
         assert!(boost > 0.0, "Preference memory should get boost");
 
-        // Memory without preference keywords
         let normal_memory = create_test_memory("今天天气很好", 1);
-        let boost_normal = reranker.preference_boost(&normal_memory, "");
+        let boost_normal = reranker.compute_boost(&normal_memory, QuestionType::Preference);
 
         assert!(
             boost_normal <= 0.0,
