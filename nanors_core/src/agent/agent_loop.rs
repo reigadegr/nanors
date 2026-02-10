@@ -11,6 +11,8 @@ use crate::{
     ChatMessage, LLMProvider, MemoryItem, MemoryItemRepo, MemoryType, Role, SessionStorage,
 };
 
+use crate::retrieval::adaptive::{AdaptiveConfig, find_adaptive_cutoff};
+
 /// Format a timestamp as a human-readable "time ago" string
 fn time_ago_since(timestamp: chrono::DateTime<chrono::Utc>) -> String {
     let now = chrono::Utc::now();
@@ -34,6 +36,9 @@ pub struct RetrievalConfig {
     pub items_top_k: usize,
     /// Maximum context length in characters
     pub context_target_length: usize,
+    /// Enable adaptive retrieval to dynamically determine result count
+    #[serde(default)]
+    pub adaptive: AdaptiveConfig,
 }
 
 impl Default for RetrievalConfig {
@@ -41,6 +46,7 @@ impl Default for RetrievalConfig {
         Self {
             items_top_k: 5,
             context_target_length: 2000,
+            adaptive: AdaptiveConfig::default(),
         }
     }
 }
@@ -194,14 +200,16 @@ where
             }
         };
 
+        // Fetch more items if adaptive retrieval is enabled
+        let fetch_count = if self.retrieval_config.adaptive.enabled {
+            self.retrieval_config.adaptive.max_results
+        } else {
+            self.retrieval_config.items_top_k
+        };
+
         // Try to use enhanced search if available, fall back to standard search
-        let Ok(items) = memory_manager
-            .search_enhanced(
-                &self.user_scope,
-                &query_embedding,
-                query,
-                self.retrieval_config.items_top_k,
-            )
+        let Ok(mut items) = memory_manager
+            .search_enhanced(&self.user_scope, &query_embedding, query, fetch_count)
             .await
         else {
             return "You are a helpful AI assistant.".to_string();
@@ -210,6 +218,24 @@ where
         if items.is_empty() {
             return "You are a helpful AI assistant.".to_string();
         }
+
+        // Apply adaptive retrieval cutoff if enabled
+        let effective_count = if self.retrieval_config.adaptive.enabled {
+            let scores: Vec<f64> = items.iter().map(|s| s.score).collect();
+            let cutoff = find_adaptive_cutoff(&scores, &self.retrieval_config.adaptive);
+            cutoff.min(self.retrieval_config.items_top_k)
+        } else {
+            self.retrieval_config.items_top_k
+        };
+
+        info!(
+            "Adaptive retrieval: using {} of {} items",
+            effective_count,
+            items.len()
+        );
+
+        // Truncate to effective count
+        items.truncate(effective_count);
 
         // Debug: Log similarity scores for top items
         info!("=== Top {} memories by similarity ===", items.len().min(20));

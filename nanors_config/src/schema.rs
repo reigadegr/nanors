@@ -273,6 +273,7 @@ impl Config {
                 retrieval: RetrievalConfig {
                     items_top_k: 10,
                     context_target_length: 2000,
+                    adaptive: nanors_core::retrieval::adaptive::AdaptiveConfig::default(),
                 },
                 extraction: ExtractionConfig {
                     enabled: true,

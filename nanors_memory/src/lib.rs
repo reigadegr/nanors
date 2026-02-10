@@ -24,11 +24,13 @@ mod dedup;
 mod enrichment;
 mod extraction;
 mod manager;
-mod query;
+pub mod query;
 pub mod rerank;
 mod schema;
 mod scoring;
+mod session;
 mod temporal;
+mod temporal_impl;
 
 // Re-export SessionStorage so MemoryManager can be used as session storage
 pub use nanors_core::SessionStorage;

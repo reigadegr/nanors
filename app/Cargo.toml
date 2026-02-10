@@ -10,7 +10,6 @@ workspace = true
 [dependencies]
 nanors_core.workspace = true
 nanors_providers.workspace = true
-nanors_session.workspace = true
 nanors_config.workspace = true
 nanors_memory.workspace = true
 

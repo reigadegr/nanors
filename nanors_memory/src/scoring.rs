@@ -13,34 +13,40 @@ pub fn keyword_overlap(a: &str, b: &str) -> f64 {
         return 0.0;
     }
 
-    // Extract character bigrams from both strings
-    let bigrams_a: HashSet<String> = a
-        .chars()
-        .collect::<Vec<char>>()
-        .windows(2)
-        .map(|w| w.iter().collect())
-        .collect();
+    // Extract character bigrams from both strings using &str to avoid allocations
+    let bigrams_a: BigramSet<'_> = BigramSet::from_str(a);
+    let bigrams_b: BigramSet<'_> = BigramSet::from_str(b);
 
-    let bigrams_b: HashSet<String> = b
-        .chars()
-        .collect::<Vec<char>>()
-        .windows(2)
-        .map(|w| w.iter().collect())
-        .collect();
-
-    if bigrams_a.is_empty() || bigrams_b.is_empty() {
+    if bigrams_a.0.is_empty() || bigrams_b.0.is_empty() {
         return 0.0;
     }
 
     // Jaccard similarity: |A ∩ B| / |A ∪ B|
-    let intersection = bigrams_a.intersection(&bigrams_b).count();
-    let union = bigrams_a.union(&bigrams_b).count();
+    let intersection = bigrams_a.0.intersection(&bigrams_b.0).count();
+    let union = bigrams_a.0.union(&bigrams_b.0).count();
 
     if union == 0 {
         return 0.0;
     }
 
     intersection as f64 / union as f64
+}
+
+/// Wrapper for a set of bigram string slices.
+///
+/// Using a newtype pattern avoids allocating String for each bigram,
+/// instead borrowing slices from the original text.
+struct BigramSet<'a>(HashSet<&'a str>);
+
+impl<'a> BigramSet<'a> {
+    fn from_str(text: &'a str) -> Self {
+        let bytes = text.as_bytes();
+        let bigrams: HashSet<&'a str> = bytes
+            .windows(2)
+            .filter_map(|w| std::str::from_utf8(w).ok())
+            .collect();
+        Self(bigrams)
+    }
 }
 
 /// Compute hybrid similarity score combining vector and keyword similarity.

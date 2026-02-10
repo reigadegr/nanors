@@ -3,7 +3,6 @@ members = [
   "app",
   "nanors_core",
   "nanors_providers",
-  "nanors_session",
   "nanors_config",
   "nanors_entities",
   "nanors_memory",
@@ -25,7 +24,6 @@ pedantic = "warn"
 [workspace.dependencies]
 nanors_core = { path = "nanors_core" }
 nanors_providers = { path = "nanors_providers" }
-nanors_session = { path = "nanors_session" }
 nanors_config = { path = "nanors_config" }
 nanors_entities = { path = "nanors_entities" }
 nanors_memory = { path = "nanors_memory" }

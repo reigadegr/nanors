@@ -63,10 +63,10 @@ const fn default_enabled() -> bool {
     true
 }
 const fn default_max_results() -> usize {
-    100
+    100_000
 }
 const fn default_min_results() -> usize {
-    1
+    5
 }
 const fn default_normalize() -> bool {
     true
@@ -76,8 +76,8 @@ impl Default for AdaptiveConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            max_results: 100,
-            min_results: 1,
+            max_results: 100_000,
+            min_results: 5,
             strategy: CutoffStrategy::default(),
             normalize_scores: true,
         }
@@ -192,9 +192,9 @@ impl Default for CutoffStrategy {
     fn default() -> Self {
         // Default: Combined strategy with reasonable defaults
         Self::Combined {
-            relative_threshold: 0.5,
-            max_drop_ratio: 0.4,
-            absolute_min: 0.3,
+            relative_threshold: 0.3,
+            max_drop_ratio: 0.8,
+            absolute_min: 0.05,
         }
     }
 }

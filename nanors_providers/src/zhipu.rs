@@ -2,8 +2,9 @@ use async_trait::async_trait;
 use nanors_core::{ChatMessage, LLMProvider, LLMResponse};
 use reqwest::Client;
 use serde_json::json;
-use tokio::time::{Duration, sleep};
-use tracing::{info, warn};
+use tracing::info;
+
+use crate::retry::retry_with_backoff;
 
 pub struct ZhipuProvider {
     client: Client,
@@ -73,56 +74,15 @@ impl LLMProvider for ZhipuProvider {
 
         info!("Sending request to Zhipu API: model={}", model);
 
-        // Retry with exponential backoff: 2s, 4s, 6s, 8s, 10s, then 10s x 3
-        let base_delays: [u64; 4] = [2, 4, 6, 8]; // First 4 retries with increasing delay
-        let final_retries = 3; // Additional retries at max 10s interval
+        // Retry with exponential backoff: 2s, 4s, 6s, 8s, then 10s x 3
+        let base_delays: [u64; 4] = [2, 4, 6, 8];
+        let final_retries = 3;
 
-        let mut last_error = None;
+        let response =
+            retry_with_backoff(|| self.try_send(&request), &base_delays, final_retries).await?;
 
-        // Try initial attempt + exponential backoff retries
-        for (i, delay_secs) in base_delays.iter().enumerate() {
-            match self.try_send(&request).await {
-                Ok(response) => {
-                    info!("Received response from Zhipu API");
-                    return Ok(response);
-                }
-                Err(e) => {
-                    last_error = Some(e);
-                    let attempt = i + 1;
-                    warn!(
-                        "Request failed (attempt {}/{}), retrying after {}s...",
-                        attempt,
-                        base_delays.len() + final_retries,
-                        delay_secs
-                    );
-                    sleep(Duration::from_secs(*delay_secs)).await;
-                }
-            }
-        }
-
-        // Final retries at 10 second intervals
-        for i in 0..final_retries {
-            match self.try_send(&request).await {
-                Ok(response) => {
-                    info!("Received response from Zhipu API");
-                    return Ok(response);
-                }
-                Err(e) => {
-                    last_error = Some(e);
-                    let attempt = base_delays.len() + i + 1;
-                    if i < final_retries - 1 {
-                        warn!(
-                            "Request failed (attempt {}/{}), retrying after 10s...",
-                            attempt,
-                            base_delays.len() + final_retries
-                        );
-                        sleep(Duration::from_secs(10)).await;
-                    }
-                }
-            }
-        }
-
-        Err(last_error.unwrap_or_else(|| anyhow::anyhow!("All retry attempts exhausted")))
+        info!("Received response from Zhipu API");
+        Ok(response)
     }
 
     fn get_default_model(&self) -> &'static str {

@@ -110,7 +110,6 @@ dependencies = [
  "nanors_core",
  "nanors_memory",
  "nanors_providers",
- "nanors_session",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -1426,22 +1425,6 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "nanors_session"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "nanors_core",
- "nanors_entities",
- "sea-orm",
- "serde",
- "serde_json",
- "tracing",
- "uuid",
 ]
 
 [[package]]

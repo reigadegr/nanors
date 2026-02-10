@@ -17,6 +17,8 @@
     clippy::missing_errors_doc
 )]
 
+mod retry;
 mod zhipu;
 
+pub use retry::retry_with_backoff;
 pub use zhipu::ZhipuProvider;
