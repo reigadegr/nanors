@@ -106,9 +106,7 @@ const QUESTION_KEYWORDS: &[&str] = &[
     "是不是",
     "是否",
     "呢",
-    // Location questions (combined to avoid substring overlap)
-    "哪儿",
-    "哪里",
+    "哪",
     // Colloquial question words (use compound words to avoid substring overlap)
     "干啥",
     "咋",
