@@ -26,7 +26,6 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub mod agent;
-pub mod conversation;
 pub mod memory;
 pub mod retrieval;
 

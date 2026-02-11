@@ -34,4 +34,4 @@ mod session;
 
 pub use history::{HistoryConfig, HistoryManager, HistoryWindow};
 pub use manager::{ConversationConfig, ConversationManager, TurnContext};
-pub use session::{ConversationSession, SessionHandle};
+pub use session::ConversationSession;

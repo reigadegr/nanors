@@ -4,7 +4,7 @@
 //! persistent conversations with context across turns.
 
 use crate::history::HistoryManager;
-use crate::session::{ConversationSession, SessionHandle};
+use crate::session::ConversationSession;
 use nanors_core::{ChatMessage, LLMProvider, Role, SessionStorage};
 use std::io::Write;
 use std::sync::Arc;
@@ -320,18 +320,6 @@ where
     #[must_use]
     pub const fn session(&self) -> &ConversationSession {
         &self.current_session
-    }
-
-    /// Get session handle for lightweight reference.
-    #[must_use]
-    pub fn session_handle(&self) -> SessionHandle {
-        SessionHandle {
-            id: self.current_session.id,
-            name: self.current_session.name.clone(),
-            created_at: self.current_session.created_at,
-            last_active: self.current_session.updated_at,
-            message_count: self.current_session.message_count(),
-        }
     }
 
     /// Get conversation statistics.

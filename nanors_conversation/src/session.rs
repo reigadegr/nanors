@@ -4,55 +4,9 @@
 //! all message history and metadata across multiple turns.
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use nanors_core::{ChatMessage, Role};
-
-/// A handle to an active conversation session.
-///
-/// This provides a lightweight way to reference and manage sessions
-/// without copying the entire message history.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionHandle {
-    /// Unique session identifier
-    pub id: Uuid,
-    /// User-defined name for the session
-    pub name: Option<String>,
-    /// When the session was created
-    pub created_at: DateTime<Utc>,
-    /// Last activity timestamp
-    pub last_active: DateTime<Utc>,
-    /// Message count in this session
-    pub message_count: usize,
-}
-
-impl SessionHandle {
-    /// Create a new session handle.
-    #[must_use]
-    pub fn new(id: Uuid) -> Self {
-        let now = Utc::now();
-        Self {
-            id,
-            name: None,
-            created_at: now,
-            last_active: now,
-            message_count: 0,
-        }
-    }
-
-    /// Set a human-readable name for this session.
-    #[must_use]
-    pub fn with_name(mut self, name: String) -> Self {
-        self.name = Some(name);
-        self
-    }
-
-    /// Update the last active timestamp.
-    pub fn touch(&mut self) {
-        self.last_active = Utc::now();
-    }
-}
 
 /// A conversation session with full message history.
 ///
@@ -99,7 +53,7 @@ impl ConversationSession {
         }
     }
 
-    /// Set the session name.
+    /// Set session name.
     #[must_use]
     pub fn with_name(mut self, name: String) -> Self {
         self.name = Some(name);
@@ -156,16 +110,6 @@ impl Default for ConversationSession {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_session_handle_creation() {
-        let id = Uuid::now_v7();
-        let handle = SessionHandle::new(id).with_name("Test Session".to_string());
-
-        assert_eq!(handle.id, id);
-        assert_eq!(handle.name, Some("Test Session".to_string()));
-        assert_eq!(handle.message_count, 0);
-    }
 
     #[test]
     fn test_conversation_session() {
