@@ -4,20 +4,16 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-nanors_core = { path = "../nanors_core" }
-nanors_providers = { path = "../nanors_providers" }
-nanors_memory = { path = "../nanors_memory" }
+nanors_core.workspace = true
+nanors_providers.workspace = true
+nanors_memory.workspace = true
 
-# Rig - LLM application framework
-rig-core = { workspace = true }
-
-# Workspace dependencies
-anyhow = { workspace = true }
-async-trait = { workspace = true }
-chrono = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
-tracing = { workspace = true }
-uuid = { workspace = true }
+anyhow.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true

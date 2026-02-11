@@ -10,7 +10,7 @@ nanors_config = { workspace = true }
 nanors_memory = { workspace = true }
 nanors_conversation = { workspace = true }
 
-dptree = "0.3"
+dptree.workspace = true
 teloxide = { workspace = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }

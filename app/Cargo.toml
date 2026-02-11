@@ -12,7 +12,7 @@ nanors_core.workspace = true
 nanors_providers.workspace = true
 nanors_config.workspace = true
 nanors_memory.workspace = true
-nanors_conversation = { path = "../nanors_conversation" }
+nanors_conversation.workspace = true
 nanors_telegram.workspace = true
 
 clap.workspace = true

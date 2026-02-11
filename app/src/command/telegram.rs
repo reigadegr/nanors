@@ -23,7 +23,43 @@ use nanors_memory::MemoryManager;
 use nanors_providers::ZhipuProvider;
 use nanors_telegram::TelegramBot;
 use std::sync::Arc;
-use tracing::info;
+use std::time::Duration;
+use tokio::time::sleep;
+use tracing::{info, warn};
+
+/// Connect to memory manager with exponential backoff retry.
+///
+/// # Retry Behavior
+/// - First retry: 1s
+/// - Second retry: 2s
+/// - Third and beyond: 3s (capped)
+/// - Retries indefinitely until connection succeeds
+async fn connect_memory_manager_with_retry(database_url: &str) -> anyhow::Result<MemoryManager> {
+    const MAX_DELAY: Duration = Duration::from_secs(3);
+    const INITIAL_DELAY: Duration = Duration::from_secs(1);
+
+    let mut attempt = 0u32;
+    let mut delay = INITIAL_DELAY;
+
+    loop {
+        attempt += 1;
+        match MemoryManager::new(database_url).await {
+            Ok(manager) => {
+                info!("Memory manager connected successfully on attempt {attempt}");
+                return Ok(manager);
+            }
+            Err(e) => {
+                warn!(
+                    "Failed to connect to database (attempt {attempt}): {e}. Retrying in {}s...",
+                    delay.as_secs()
+                );
+                sleep(delay).await;
+                // Exponential backoff: 1s -> 2s -> 3s -> 3s -> ...
+                delay = (delay * 2).saturating_add(Duration::ZERO).min(MAX_DELAY);
+            }
+        }
+    }
+}
 
 /// Input for Telegram bot command.
 pub struct TelegramInput {
@@ -65,12 +101,9 @@ impl CommandStrategy for TelegramStrategy {
         // Initialize provider
         let provider = ZhipuProvider::new(config.providers.zhipu.api_key.clone());
 
-        // Initialize memory manager
-        let memory_manager = Arc::new(
-            MemoryManager::new(&config.database.url)
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to initialize memory manager: {e}"))?,
-        );
+        // Initialize memory manager with exponential backoff retry
+        let memory_manager =
+            Arc::new(connect_memory_manager_with_retry(&config.database.url).await?);
 
         // Create and run bot
         let bot = TelegramBot::new(token, provider, memory_manager, config, &allow_from)?;
