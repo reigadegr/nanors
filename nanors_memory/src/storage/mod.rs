@@ -119,13 +119,13 @@ impl StorageEngine {
 
     /// Insert or update a memory item with deduplication.
     ///
-    /// If an item with the same content hash already exists in the scope,
+    /// If an item with the same content hash already exists,
     /// its reinforcement count is incremented instead of creating a
     /// duplicate.
     pub async fn upsert_memory(&self, item: &MemoryItem) -> anyhow::Result<Uuid> {
         let hash = dedup::content_hash(&item.memory_type.to_string(), &item.summary);
 
-        if let Some(existing) = self.find_by_content_hash(&item.user_scope, &hash).await? {
+        if let Some(existing) = self.find_by_content_hash(&hash).await? {
             let mut updated = existing.clone();
             updated.reinforcement_count += 1;
             updated.updated_at = Utc::now();
@@ -151,7 +151,6 @@ impl StorageEngine {
             let now = Utc::now();
             let model = memory_items::ActiveModel {
                 id: sea_orm::Set(item.id),
-                user_scope: sea_orm::Set(item.user_scope.clone()),
                 memory_type: sea_orm::Set(item.memory_type.to_string()),
                 summary: sea_orm::Set(item.summary.clone()),
                 embedding: sea_orm::Set(
@@ -174,13 +173,8 @@ impl StorageEngine {
     }
 
     /// Find a memory by content hash.
-    pub async fn find_by_content_hash(
-        &self,
-        user_scope: &str,
-        hash: &str,
-    ) -> anyhow::Result<Option<MemoryItem>> {
+    pub async fn find_by_content_hash(&self, hash: &str) -> anyhow::Result<Option<MemoryItem>> {
         let result = memory_items::Entity::find()
-            .filter(memory_items::Column::UserScope.eq(user_scope))
             .filter(memory_items::Column::ContentHash.eq(hash))
             .one(&self.db)
             .await?;
@@ -199,12 +193,9 @@ impl StorageEngine {
         Ok(())
     }
 
-    /// List memories by scope.
-    pub async fn list_by_scope(&self, user_scope: &str) -> anyhow::Result<Vec<MemoryItem>> {
-        let results = memory_items::Entity::find()
-            .filter(memory_items::Column::UserScope.eq(user_scope))
-            .all(&self.db)
-            .await?;
+    /// List all memories.
+    pub async fn list_by_scope(&self) -> anyhow::Result<Vec<MemoryItem>> {
+        let results = memory_items::Entity::find().all(&self.db).await?;
         Ok(results
             .into_iter()
             .map(convert::memory_item_from_model)
@@ -248,7 +239,6 @@ impl MemoryItemRepo for StorageEngine {
 
         let model = memory_items::ActiveModel {
             id: sea_orm::Set(item.id),
-            user_scope: sea_orm::Set(item.user_scope.clone()),
             memory_type: sea_orm::Set(item.memory_type.to_string()),
             summary: sea_orm::Set(item.summary.clone()),
             embedding: sea_orm::Set(
@@ -272,13 +262,8 @@ impl MemoryItemRepo for StorageEngine {
         Ok(result.map(convert::memory_item_from_model))
     }
 
-    async fn find_by_content_hash(
-        &self,
-        user_scope: &str,
-        hash: &str,
-    ) -> anyhow::Result<Option<MemoryItem>> {
+    async fn find_by_content_hash(&self, hash: &str) -> anyhow::Result<Option<MemoryItem>> {
         let result = memory_items::Entity::find()
-            .filter(memory_items::Column::UserScope.eq(user_scope))
             .filter(memory_items::Column::ContentHash.eq(hash))
             .one(&self.db)
             .await?;
@@ -294,7 +279,6 @@ impl MemoryItemRepo for StorageEngine {
 
         let model = memory_items::ActiveModel {
             id: Set(existing.id),
-            user_scope: Set(item.user_scope.clone()),
             memory_type: Set(item.memory_type.to_string()),
             summary: Set(item.summary.clone()),
             embedding: Set(item
@@ -322,11 +306,8 @@ impl MemoryItemRepo for StorageEngine {
         Ok(())
     }
 
-    async fn list_by_scope(&self, user_scope: &str) -> anyhow::Result<Vec<MemoryItem>> {
-        let results = memory_items::Entity::find()
-            .filter(memory_items::Column::UserScope.eq(user_scope))
-            .all(&self.db)
-            .await?;
+    async fn list_by_scope(&self) -> anyhow::Result<Vec<MemoryItem>> {
+        let results = memory_items::Entity::find().all(&self.db).await?;
         Ok(results
             .into_iter()
             .map(convert::memory_item_from_model)
@@ -335,12 +316,11 @@ impl MemoryItemRepo for StorageEngine {
 
     async fn search_by_embedding(
         &self,
-        user_scope: &str,
         query_embedding: &[f32],
         query_text: &str,
         top_k: usize,
     ) -> anyhow::Result<Vec<SalienceScore<MemoryItem>>> {
-        let items: Vec<MemoryItem> = self.list_by_scope(user_scope).await?;
+        let items: Vec<MemoryItem> = self.list_by_scope().await?;
         let now = Utc::now();
 
         // Filter out items that are essentially the same as the query (similarity >= 0.95)
@@ -407,10 +387,9 @@ impl MemoryItemRepo for StorageEngine {
 
     async fn backfill_embeddings(
         &self,
-        user_scope: &str,
         embed_fn: &(dyn Fn(String) -> anyhow::Result<Vec<f32>> + Send + Sync),
     ) -> anyhow::Result<usize> {
-        let items = self.list_by_scope(user_scope).await?;
+        let items = self.list_by_scope().await?;
         let mut count = 0;
 
         for item in items {
@@ -438,7 +417,7 @@ impl MemoryItemRepo for StorageEngine {
 
         // Search for semantically similar memories
         let similar = self
-            .search_by_embedding(&item.user_scope, query_embedding, &item.summary, 10)
+            .search_by_embedding(query_embedding, &item.summary, 10)
             .await?;
 
         // Check if any memory is above the similarity threshold

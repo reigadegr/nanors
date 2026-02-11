@@ -25,7 +25,6 @@ pub fn memory_item_from_model(m: memory_items::Model) -> MemoryItem {
 
     MemoryItem {
         id: m.id,
-        user_scope: m.user_scope,
         memory_type,
         summary: m.summary,
         embedding,

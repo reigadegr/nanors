@@ -36,7 +36,6 @@ impl std::str::FromStr for MemoryType {
 #[derive(Debug, Clone)]
 pub struct MemoryItem {
     pub id: Uuid,
-    pub user_scope: String,
     pub memory_type: MemoryType,
     pub summary: String,
     pub embedding: Option<Vec<f32>>,

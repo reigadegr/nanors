@@ -151,9 +151,6 @@ pub struct MemoryCard {
     /// Unique identifier.
     pub id: Uuid,
 
-    /// User namespace for multi-tenancy.
-    pub user_scope: String,
-
     /// The kind of memory card.
     pub kind: CardKind,
 
@@ -206,18 +203,11 @@ impl MemoryCard {
 
     /// Create a new memory card with minimal fields.
     #[must_use]
-    pub fn new(
-        user_scope: String,
-        kind: CardKind,
-        entity: String,
-        slot: String,
-        value: String,
-    ) -> Self {
+    pub fn new(kind: CardKind, entity: String, slot: String, value: String) -> Self {
         let now = Utc::now();
         let entity_key = format!("{entity}:{slot}");
         Self {
             id: Uuid::now_v7(),
-            user_scope,
             kind,
             entity,
             slot,
@@ -400,7 +390,6 @@ mod tests {
     #[test]
     fn test_memory_card_new() {
         let card = MemoryCard::new(
-            "test_user".to_string(),
             CardKind::Fact,
             "user".to_string(),
             "user_type".to_string(),
@@ -417,7 +406,6 @@ mod tests {
     #[expect(clippy::expect_used, reason = "Test failure should panic with context")]
     fn test_memory_card_builder() {
         let card = MemoryCard::new(
-            "test_user".to_string(),
             CardKind::Fact,
             "user".to_string(),
             "location".to_string(),
@@ -439,7 +427,6 @@ mod tests {
     #[test]
     fn test_memory_card_matches() {
         let card = MemoryCard::new(
-            "test_user".to_string(),
             CardKind::Fact,
             "user".to_string(),
             "user_type".to_string(),

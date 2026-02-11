@@ -62,7 +62,6 @@ impl super::CommandStrategy for InfoStrategy {
             "  Enabled: {}",
             if config.memory.enabled { "Yes" } else { "No" }
         );
-        println!("  Default User Scope: {}", config.memory.default_user_scope);
 
         Ok(())
     }

@@ -17,7 +17,6 @@ impl MemoryManager {
     /// 3. Looking up structured cards for O(1) fact retrieval
     ///
     /// # Arguments
-    /// * `user_scope` - User namespace
     /// * `query_embedding` - Query vector embedding
     /// * `query_text` - Original query text
     /// * `top_k` - Maximum results to return
@@ -26,7 +25,6 @@ impl MemoryManager {
     /// Ranked memory results
     pub async fn search_enhanced(
         &self,
-        user_scope: &str,
         query_embedding: &[f32],
         query_text: &str,
         top_k: usize,
@@ -40,7 +38,7 @@ impl MemoryManager {
 
         // Step 2: Try structured card lookup for known question types
         let card_boost = if let Some(card) = self
-            .lookup_card_for_question(user_scope, question_type, query_text)
+            .lookup_card_for_question(question_type, query_text)
             .await?
         {
             info!(
@@ -48,7 +46,7 @@ impl MemoryManager {
                 card.entity, card.slot, card.value
             );
             // Find the memory that contains this card's value
-            self.boost_memory_with_card_value(user_scope, &card.value, query_embedding, top_k)
+            self.boost_memory_with_card_value(&card.value, query_embedding, top_k)
                 .await?
         } else {
             None
@@ -56,7 +54,7 @@ impl MemoryManager {
 
         // Step 3: Perform standard vector search
         let mut results = self
-            .search_by_embedding(user_scope, query_embedding, query_text, top_k)
+            .search_by_embedding(query_embedding, query_text, top_k)
             .await?;
 
         // Step 4: Apply question-type-specific ranking adjustments
@@ -93,7 +91,6 @@ impl MemoryManager {
     /// Look up a structured card based on question type.
     async fn lookup_card_for_question(
         &self,
-        user_scope: &str,
         question_type: QuestionType,
         _query_text: &str,
     ) -> anyhow::Result<Option<crate::extraction::MemoryCard>> {
@@ -105,19 +102,18 @@ impl MemoryManager {
         };
 
         self.card_repo
-            .find_by_entity_slot(user_scope, entity, slot)
+            .find_by_entity_slot(entity, slot)
             .await
     }
 
     /// Find memory containing a specific card value.
     async fn boost_memory_with_card_value(
         &self,
-        user_scope: &str,
         value: &str,
         query_embedding: &[f32],
         _top_k: usize,
     ) -> anyhow::Result<Option<SalienceScore<MemoryItem>>> {
-        let all_items = MemoryItemRepo::list_by_scope(self, user_scope).await?;
+        let all_items = MemoryItemRepo::list_all(self).await?;
 
         // Find memories that contain the card value
         let matching_memory = all_items

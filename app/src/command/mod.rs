@@ -28,7 +28,6 @@ fn setup_memory_storage(
     memory_manager: Arc<MemoryManager>,
 ) -> AgentLoop<ZhipuProvider, Arc<MemoryManager>> {
     info!("Memory feature enabled, setting up memory retrieval");
-    let user_scope = config.memory.default_user_scope.clone();
 
     let retrieval_config = config.memory.retrieval.clone();
 
@@ -41,7 +40,7 @@ fn setup_memory_storage(
     let memory_repo: Arc<dyn nanors_core::MemoryItemRepo> = memory_manager;
 
     agent
-        .with_memory(memory_repo, user_scope)
+        .with_memory(memory_repo)
         .with_retrieval_config(retrieval_config)
 }
 

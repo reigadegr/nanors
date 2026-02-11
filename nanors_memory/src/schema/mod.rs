@@ -381,7 +381,6 @@ mod tests {
         let registry = SchemaRegistry::new().strict();
 
         let card = MemoryCard::new(
-            "user".to_string(),
             CardKind::Fact,
             "user".to_string(),
             "unknown_slot".to_string(),

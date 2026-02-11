@@ -61,7 +61,6 @@ where
     config: AgentConfig,
     running: Arc<AtomicBool>,
     memory_manager: Option<Arc<dyn MemoryItemRepo>>,
-    user_scope: String,
     retrieval_config: RetrievalConfig,
 }
 
@@ -94,20 +93,14 @@ where
             config,
             running: Arc::new(AtomicBool::new(true)),
             memory_manager: None,
-            user_scope: String::new(),
             retrieval_config: RetrievalConfig::default(),
         }
     }
 
     /// Set the memory manager for persistent memory storage.
     #[must_use]
-    pub fn with_memory(
-        mut self,
-        memory_manager: Arc<dyn MemoryItemRepo>,
-        user_scope: String,
-    ) -> Self {
+    pub fn with_memory(mut self, memory_manager: Arc<dyn MemoryItemRepo>) -> Self {
         self.memory_manager = Some(memory_manager);
-        self.user_scope = user_scope;
         self
     }
 
@@ -209,7 +202,7 @@ where
 
         // Try to use enhanced search if available, fall back to standard search
         let Ok(mut items) = memory_manager
-            .search_enhanced(&self.user_scope, &query_embedding, query, fetch_count)
+            .search_enhanced(&query_embedding, query, fetch_count)
             .await
         else {
             return "You are a helpful AI assistant.".to_string();
@@ -324,7 +317,6 @@ where
 
         let user_memory = MemoryItem {
             id: Uuid::now_v7(),
-            user_scope: self.user_scope.clone(),
             memory_type: MemoryType::Episodic,
             summary: format!("User: {content}"),
             embedding: user_embedding,

@@ -177,9 +177,7 @@ impl MemoryManager {
     pub async fn upsert_memory(&self, item: &MemoryItem) -> anyhow::Result<Uuid> {
         let hash = dedup::content_hash(&item.memory_type.to_string(), &item.summary);
 
-        if let Some(existing) =
-            MemoryItemRepo::find_by_content_hash(self, &item.user_scope, &hash).await?
-        {
+        if let Some(existing) = MemoryItemRepo::find_by_content_hash(self, &hash).await? {
             let mut updated = existing.clone();
             updated.reinforcement_count += 1;
             updated.updated_at = Utc::now();
@@ -221,9 +219,7 @@ impl MemoryManager {
     ) -> anyhow::Result<Uuid> {
         // Fast path: check for exact duplicate via content_hash
         let hash = dedup::content_hash(&item.memory_type.to_string(), &item.summary);
-        if let Some(existing) =
-            MemoryItemRepo::find_by_content_hash(self, &item.user_scope, &hash).await?
-        {
+        if let Some(existing) = MemoryItemRepo::find_by_content_hash(self, &hash).await? {
             let mut updated = existing.clone();
             updated.reinforcement_count += 1;
             updated.updated_at = Utc::now();
@@ -239,14 +235,8 @@ impl MemoryManager {
         if let Some(ref embedding) = item.embedding {
             // Search for semantically similar memories (fetch more than needed)
             // Use item.summary as query text for hybrid similarity matching
-            let similar_memories = MemoryItemRepo::search_by_embedding(
-                self,
-                &item.user_scope,
-                embedding,
-                &item.summary,
-                20,
-            )
-            .await?;
+            let similar_memories =
+                MemoryItemRepo::search_by_embedding(self, embedding, &item.summary, 20).await?;
 
             // Determine if this is a user memory (starts with "User:")
             let is_user_memory = item.summary.starts_with("User:");
@@ -320,7 +310,6 @@ impl MemoryItemRepo for MemoryManager {
             .map(|v| convert::embedding_to_json(v.as_slice()));
         let model = memory_items::ActiveModel {
             id: Set(item.id),
-            user_scope: Set(item.user_scope.clone()),
             memory_type: Set(item.memory_type.to_string()),
             summary: Set(item.summary.clone()),
             embedding: Set(embedding_json),
@@ -340,13 +329,8 @@ impl MemoryItemRepo for MemoryManager {
         Ok(result.map(convert::memory_item_from_model))
     }
 
-    async fn find_by_content_hash(
-        &self,
-        user_scope: &str,
-        hash: &str,
-    ) -> anyhow::Result<Option<MemoryItem>> {
+    async fn find_by_content_hash(&self, hash: &str) -> anyhow::Result<Option<MemoryItem>> {
         let result = memory_items::Entity::find()
-            .filter(memory_items::Column::UserScope.eq(user_scope))
             .filter(memory_items::Column::ContentHash.eq(hash))
             .one(&self.db)
             .await?;
@@ -361,7 +345,6 @@ impl MemoryItemRepo for MemoryManager {
 
         let model = memory_items::ActiveModel {
             id: Set(existing.id),
-            user_scope: Set(item.user_scope.clone()),
             memory_type: Set(item.memory_type.to_string()),
             summary: Set(item.summary.clone()),
             embedding: Set(item
@@ -389,11 +372,8 @@ impl MemoryItemRepo for MemoryManager {
         Ok(())
     }
 
-    async fn list_by_scope(&self, user_scope: &str) -> anyhow::Result<Vec<MemoryItem>> {
-        let results = memory_items::Entity::find()
-            .filter(memory_items::Column::UserScope.eq(user_scope))
-            .all(&self.db)
-            .await?;
+    async fn list_all(&self) -> anyhow::Result<Vec<MemoryItem>> {
+        let results = memory_items::Entity::find().all(&self.db).await?;
         Ok(results
             .into_iter()
             .map(convert::memory_item_from_model)
@@ -402,12 +382,11 @@ impl MemoryItemRepo for MemoryManager {
 
     async fn search_by_embedding(
         &self,
-        user_scope: &str,
         query_embedding: &[f32],
         query_text: &str,
         top_k: usize,
     ) -> anyhow::Result<Vec<SalienceScore<MemoryItem>>> {
-        let items: Vec<MemoryItem> = MemoryItemRepo::list_by_scope(self, user_scope).await?;
+        let items: Vec<MemoryItem> = MemoryItemRepo::list_all(self).await?;
         let now = Utc::now();
 
         // Filter out items that are essentially the same as the query (similarity >= 0.95)
@@ -519,10 +498,9 @@ impl MemoryItemRepo for MemoryManager {
 
     async fn backfill_embeddings(
         &self,
-        user_scope: &str,
         embed_fn: &(dyn Fn(String) -> anyhow::Result<Vec<f32>> + Send + Sync),
     ) -> anyhow::Result<usize> {
-        let items = MemoryItemRepo::list_by_scope(self, user_scope).await?;
+        let items = MemoryItemRepo::list_all(self).await?;
         let mut updated = 0_usize;
 
         for mut item in items {

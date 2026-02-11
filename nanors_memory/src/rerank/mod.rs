@@ -262,7 +262,6 @@ mod tests {
     fn create_test_memory(summary: &str, hours_ago: i64) -> MemoryItem {
         MemoryItem {
             id: uuid::Uuid::now_v7(),
-            user_scope: "test".to_string(),
             memory_type: MemoryType::Episodic,
             summary: summary.to_string(),
             embedding: None,

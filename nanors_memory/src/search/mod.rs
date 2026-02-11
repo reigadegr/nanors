@@ -122,7 +122,6 @@ impl SearchEngine {
     pub async fn search_enhanced<R: MemoryItemRepo>(
         &self,
         repo: &R,
-        user_scope: &str,
         query_embedding: &[f32],
         query_text: &str,
         top_k: usize,
@@ -136,7 +135,7 @@ impl SearchEngine {
 
         // Step 2: Try structured card lookup for known question types
         let card_boost = if let Some(card) = self
-            .lookup_card_for_question(user_scope, question_type, query_text)
+            .lookup_card_for_question(question_type, query_text)
             .await?
         {
             info!(
@@ -144,7 +143,7 @@ impl SearchEngine {
                 card.entity, card.slot, card.value
             );
             // Find the memory that contains this card's value
-            self.boost_memory_with_card_value(user_scope, &card.value, query_embedding, top_k)
+            self.boost_memory_with_card_value(&card.value, query_embedding, top_k)
                 .await?
         } else {
             None
@@ -152,7 +151,7 @@ impl SearchEngine {
 
         // Step 3: Perform standard vector search
         let mut results = self
-            .search_by_embedding(repo, user_scope, query_embedding, query_text, top_k)
+            .search_by_embedding(repo, query_embedding, query_text, top_k)
             .await?;
 
         // Step 4: Apply question-type-specific ranking adjustments
@@ -189,7 +188,6 @@ impl SearchEngine {
     /// Look up a structured card based on question type.
     async fn lookup_card_for_question(
         &self,
-        user_scope: &str,
         question_type: QuestionType,
         _query_text: &str,
     ) -> anyhow::Result<Option<MemoryCard>> {
@@ -201,19 +199,18 @@ impl SearchEngine {
         };
 
         self.card_repo
-            .find_by_entity_slot(user_scope, entity, slot)
+            .find_by_entity_slot(entity, slot)
             .await
     }
 
     /// Find memory containing a specific card value.
     async fn boost_memory_with_card_value<R: MemoryItemRepo>(
         &self,
-        user_scope: &str,
         value: &str,
         query_embedding: &[f32],
         _top_k: usize,
     ) -> anyhow::Result<Option<SalienceScore<MemoryItem>>> {
-        let all_items = MemoryItemRepo::list_by_scope(self, user_scope).await?;
+        let all_items = MemoryItemRepo::list_all(self).await?;
 
         // Find memories that contain the card value
         let matching_memory = all_items
@@ -240,12 +237,11 @@ impl SearchEngine {
     async fn search_by_embedding<R: MemoryItemRepo>(
         &self,
         repo: &R,
-        user_scope: &str,
         query_embedding: &[f32],
         query_text: &str,
         top_k: usize,
     ) -> anyhow::Result<Vec<SalienceScore<MemoryItem>>> {
-        let all_items = MemoryItemRepo::list_by_scope(self, user_scope).await?;
+        let all_items = MemoryItemRepo::list_all(self).await?;
 
         let mut results: Vec<SalienceScore<MemoryItem>> = all_items
             .into_iter()
@@ -353,7 +349,6 @@ mod tests {
     fn create_test_memory(summary: &str, hours_ago: i64) -> MemoryItem {
         MemoryItem {
             id: uuid::Uuid::now_v7(),
-            user_scope: "test".to_string(),
             memory_type: nanors_core::memory::MemoryType::Episodic,
             summary: summary.to_string(),
             embedding: None,

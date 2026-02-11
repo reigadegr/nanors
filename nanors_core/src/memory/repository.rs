@@ -9,21 +9,16 @@ pub trait MemoryItemRepo: Send + Sync {
 
     async fn find_by_id(&self, id: &Uuid) -> anyhow::Result<Option<MemoryItem>>;
 
-    async fn find_by_content_hash(
-        &self,
-        user_scope: &str,
-        hash: &str,
-    ) -> anyhow::Result<Option<MemoryItem>>;
+    async fn find_by_content_hash(&self, hash: &str) -> anyhow::Result<Option<MemoryItem>>;
 
     async fn update(&self, item: &MemoryItem) -> anyhow::Result<()>;
 
     async fn delete(&self, id: &Uuid) -> anyhow::Result<()>;
 
-    async fn list_by_scope(&self, user_scope: &str) -> anyhow::Result<Vec<MemoryItem>>;
+    async fn list_all(&self) -> anyhow::Result<Vec<MemoryItem>>;
 
     async fn search_by_embedding(
         &self,
-        user_scope: &str,
         query_embedding: &[f32],
         query_text: &str,
         top_k: usize,
@@ -39,13 +34,12 @@ pub trait MemoryItemRepo: Send + Sync {
     /// Default implementation falls back to `search_by_embedding`.
     async fn search_enhanced(
         &self,
-        user_scope: &str,
         query_embedding: &[f32],
         query_text: &str,
         top_k: usize,
     ) -> anyhow::Result<Vec<SalienceScore<MemoryItem>>> {
         // Default implementation: just use standard vector search
-        self.search_by_embedding(user_scope, query_embedding, query_text, top_k)
+        self.search_by_embedding(query_embedding, query_text, top_k)
             .await
     }
 
@@ -53,7 +47,6 @@ pub trait MemoryItemRepo: Send + Sync {
     /// Returns the number of items updated.
     async fn backfill_embeddings(
         &self,
-        user_scope: &str,
         embed_fn: &(dyn Fn(String) -> anyhow::Result<Vec<f32>> + Send + Sync),
     ) -> anyhow::Result<usize>;
 

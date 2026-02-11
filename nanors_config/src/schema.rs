@@ -40,8 +40,6 @@ impl DatabaseConfig {
 pub struct MemoryConfig {
     #[serde(default)]
     pub enabled: bool,
-    #[serde(default = "MemoryConfig::default_user_scope")]
-    pub default_user_scope: String,
     #[serde(default)]
     pub retrieval: RetrievalConfig,
 }
@@ -60,15 +58,8 @@ impl Default for MemoryConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            default_user_scope: Self::default_user_scope(),
             retrieval: RetrievalConfig::default(),
         }
-    }
-}
-
-impl MemoryConfig {
-    fn default_user_scope() -> String {
-        "default".to_string()
     }
 }
 
@@ -161,7 +152,6 @@ impl Config {
   },
   "memory": {
     "enabled": true,
-    "default_user_scope": "default",
     "retrieval": {
       "items_top_k": 10,
       "context_target_length": 2000,

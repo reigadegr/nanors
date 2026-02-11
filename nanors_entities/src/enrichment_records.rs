@@ -9,8 +9,6 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     #[sea_orm(unique_key = "unique_enrichment")]
-    pub user_scope: String,
-    #[sea_orm(unique_key = "unique_enrichment")]
     pub memory_id: Uuid,
     #[sea_orm(unique_key = "unique_enrichment")]
     pub engine_kind: String,

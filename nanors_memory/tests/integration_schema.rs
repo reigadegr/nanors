@@ -13,7 +13,6 @@ async fn test_schema_validation_valid_age() {
     let registry = SchemaRegistry::new();
 
     let card = MemoryCard::new(
-        "user".to_string(),
         CardKind::Fact,
         "user".to_string(),
         "age".to_string(),
@@ -29,7 +28,6 @@ async fn test_schema_validation_invalid_age() {
     let registry = SchemaRegistry::new();
 
     let card = MemoryCard::new(
-        "user".to_string(),
         CardKind::Fact,
         "user".to_string(),
         "age".to_string(),
@@ -51,7 +49,6 @@ async fn test_schema_validation_unknown_slot_non_strict() {
     let registry = SchemaRegistry::new(); // non-strict by default
 
     let card = MemoryCard::new(
-        "user".to_string(),
         CardKind::Fact,
         "user".to_string(),
         "unknown_slot".to_string(),
@@ -68,7 +65,6 @@ async fn test_schema_validation_unknown_slot_strict() {
     let registry = SchemaRegistry::new().strict();
 
     let card = MemoryCard::new(
-        "user".to_string(),
         CardKind::Fact,
         "user".to_string(),
         "unknown_slot".to_string(),
@@ -159,12 +155,10 @@ async fn test_schema_with_database_storage() {
         .await
         .expect("Failed to connect to database");
 
-    let user_scope = "test_schema_db";
     let repo = DatabaseCardRepository::new(db);
 
     // Create a card with valid age
     let card1 = MemoryCard::new(
-        user_scope.to_string(),
         CardKind::Fact,
         "user".to_string(),
         "age".to_string(),
@@ -175,7 +169,7 @@ async fn test_schema_with_database_storage() {
 
     // Verify it can be retrieved
     let retrieved = repo
-        .find_by_entity_slot(user_scope, "user", "age")
+        .find_by_entity_slot("user", "age")
         .await
         .expect("Failed to find card");
 
@@ -190,7 +184,6 @@ async fn test_schema_validates_boolean_slot() {
 
     // Create a verified card
     let card = MemoryCard::new(
-        "user".to_string(),
         CardKind::Fact,
         "user".to_string(),
         "verified".to_string(),
@@ -202,7 +195,6 @@ async fn test_schema_validates_boolean_slot() {
 
     // Test with invalid value
     let card_invalid = MemoryCard::new(
-        "user".to_string(),
         CardKind::Fact,
         "user".to_string(),
         "verified".to_string(),

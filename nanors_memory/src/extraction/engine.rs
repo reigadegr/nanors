@@ -71,13 +71,13 @@ impl ExtractionEngine {
         Self::new(ExtractionConfig::default())
     }
 
-    /// Extract cards from text for a given user scope.
+    /// Extract cards from text.
     #[must_use]
-    pub fn extract(&self, text: &str, user_scope: &str) -> Vec<MemoryCard> {
+    pub fn extract(&self, text: &str) -> Vec<MemoryCard> {
         let mut cards = Vec::new();
 
         for pattern in &self.patterns {
-            if let Some(card) = Self::apply_pattern(pattern, text, user_scope) {
+            if let Some(card) = Self::apply_pattern(pattern, text) {
                 // Filter by confidence if applicable
                 if let Some(conf) = card.confidence {
                     if conf < self.config.min_confidence {
@@ -93,13 +93,8 @@ impl ExtractionEngine {
 
     /// Extract cards from a memory item summary.
     #[must_use]
-    pub fn extract_from_summary(
-        &self,
-        summary: &str,
-        user_scope: &str,
-        source_memory_id: Uuid,
-    ) -> Vec<MemoryCard> {
-        let mut cards = self.extract(summary, user_scope);
+    pub fn extract_from_summary(&self, summary: &str, source_memory_id: Uuid) -> Vec<MemoryCard> {
+        let mut cards = self.extract(summary);
 
         // Add source memory id to all cards
         for card in &mut cards {
@@ -110,18 +105,13 @@ impl ExtractionEngine {
     }
 
     /// Apply a single pattern to text.
-    fn apply_pattern(
-        pattern: &ExtractionPattern,
-        text: &str,
-        user_scope: &str,
-    ) -> Option<MemoryCard> {
+    fn apply_pattern(pattern: &ExtractionPattern, text: &str) -> Option<MemoryCard> {
         let re = Regex::new(&pattern.pattern).ok()?;
 
         let caps = re.captures(text)?;
 
         // Build the card
         let mut card = MemoryCard::new(
-            user_scope.to_string(),
             pattern.kind,
             Self::expand_template(&pattern.entity, &caps),
             Self::expand_template(&pattern.slot, &caps),
@@ -184,16 +174,15 @@ pub trait CardRepository: Send + Sync {
     /// Insert a new memory card.
     async fn insert(&self, card: &MemoryCard) -> anyhow::Result<Uuid>;
 
-    /// Find a card by user scope, entity, and slot.
+    /// Find a card by entity and slot.
     async fn find_by_entity_slot(
         &self,
-        user_scope: &str,
         entity: &str,
         slot: &str,
     ) -> anyhow::Result<Option<MemoryCard>>;
 
-    /// Find all cards for a user scope.
-    async fn find_by_scope(&self, user_scope: &str) -> anyhow::Result<Vec<MemoryCard>>;
+    /// Find all cards.
+    async fn find_by_scope(&self) -> anyhow::Result<Vec<MemoryCard>>;
 
     /// Find cards by source memory id.
     async fn find_by_source_memory(
@@ -205,12 +194,7 @@ pub trait CardRepository: Send + Sync {
     async fn upsert_card(&self, card: &MemoryCard) -> anyhow::Result<Uuid>;
 
     /// Find the current value for an entity/slot (latest by `updated_at`).
-    async fn get_current_value(
-        &self,
-        user_scope: &str,
-        entity: &str,
-        slot: &str,
-    ) -> anyhow::Result<Option<String>>;
+    async fn get_current_value(&self, entity: &str, slot: &str) -> anyhow::Result<Option<String>>;
 }
 
 /// Database implementation of card repository.
@@ -246,7 +230,6 @@ impl CardRepository for DatabaseCardRepository {
 
         let model = memory_cards::ActiveModel {
             id: Set(card.id),
-            user_scope: Set(card.user_scope.clone()),
             kind: Set(card.kind.as_str().to_string()),
             entity: Set(card.entity.clone()),
             slot: Set(card.slot.clone()),
@@ -271,12 +254,10 @@ impl CardRepository for DatabaseCardRepository {
 
     async fn find_by_entity_slot(
         &self,
-        user_scope: &str,
         entity: &str,
         slot: &str,
     ) -> anyhow::Result<Option<MemoryCard>> {
         let result = MemoryCardEntity::find()
-            .filter(memory_cards::Column::UserScope.eq(user_scope))
             .filter(memory_cards::Column::Entity.eq(entity))
             .filter(memory_cards::Column::Slot.eq(slot))
             .one(&self.db)
@@ -288,11 +269,8 @@ impl CardRepository for DatabaseCardRepository {
         }
     }
 
-    async fn find_by_scope(&self, user_scope: &str) -> anyhow::Result<Vec<MemoryCard>> {
-        let results = MemoryCardEntity::find()
-            .filter(memory_cards::Column::UserScope.eq(user_scope))
-            .all(&self.db)
-            .await?;
+    async fn find_by_scope(&self) -> anyhow::Result<Vec<MemoryCard>> {
+        let results = MemoryCardEntity::find().all(&self.db).await?;
 
         // Convert models to cards, handling any parsing errors
         let mut cards = Vec::with_capacity(results.len());
@@ -327,7 +305,6 @@ impl CardRepository for DatabaseCardRepository {
 
         // Check for existing card with same version_key - get the database model directly
         let existing_model = MemoryCardEntity::find()
-            .filter(memory_cards::Column::UserScope.eq(&card.user_scope))
             .filter(memory_cards::Column::Entity.eq(&card.entity))
             .filter(memory_cards::Column::Slot.eq(&card.slot))
             .one(&self.db)
@@ -351,14 +328,8 @@ impl CardRepository for DatabaseCardRepository {
         }
     }
 
-    async fn get_current_value(
-        &self,
-        user_scope: &str,
-        entity: &str,
-        slot: &str,
-    ) -> anyhow::Result<Option<String>> {
+    async fn get_current_value(&self, entity: &str, slot: &str) -> anyhow::Result<Option<String>> {
         let result = MemoryCardEntity::find()
-            .filter(memory_cards::Column::UserScope.eq(user_scope))
             .filter(memory_cards::Column::Entity.eq(entity))
             .filter(memory_cards::Column::Slot.eq(slot))
             .one(&self.db)
@@ -372,7 +343,6 @@ impl DatabaseCardRepository {
     fn model_to_card(model: MemoryCardModel) -> anyhow::Result<MemoryCard> {
         Ok(MemoryCard {
             id: model.id,
-            user_scope: model.user_scope,
             kind: CardKind::from_str(&model.kind)
                 .map_err(|_| anyhow::anyhow!("invalid card kind: {}", model.kind))?,
             entity: model.entity,
@@ -412,7 +382,7 @@ mod tests {
     #[expect(clippy::expect_used, reason = "Test failure should panic with context")]
     fn test_extract_user_identity() {
         let engine = ExtractionEngine::with_defaults().expect("default engine should build");
-        let cards = engine.extract("我是安卓玩机用户", "test_user");
+        let cards = engine.extract("我是安卓玩机用户");
 
         assert!(!cards.is_empty());
         let user_type = cards.iter().find(|c| c.slot == "user_type");
@@ -429,7 +399,7 @@ mod tests {
     #[expect(clippy::expect_used, reason = "Test failure should panic with context")]
     fn test_extract_location() {
         let engine = ExtractionEngine::with_defaults().expect("default engine should build");
-        let cards = engine.extract("我住在湖南长沙", "test_user");
+        let cards = engine.extract("我住在湖南长沙");
 
         let location = cards.iter().find(|c| c.slot == "location");
         assert!(location.is_some());
@@ -445,7 +415,7 @@ mod tests {
     #[expect(clippy::expect_used, reason = "Test failure should panic with context")]
     fn test_extract_preference() {
         let engine = ExtractionEngine::with_defaults().expect("default engine should build");
-        let cards = engine.extract("我喜欢吃辣的食物", "test_user");
+        let cards = engine.extract("我喜欢吃辣的食物");
 
         let pref = cards.iter().find(|c| c.slot == "preference");
         assert!(pref.is_some());
@@ -460,7 +430,7 @@ mod tests {
     fn test_extract_from_summary() {
         let engine = ExtractionEngine::with_defaults().expect("default engine should build");
         let source_id = Uuid::now_v7();
-        let cards = engine.extract_from_summary("我是开发者，住在北京", "test_user", source_id);
+        let cards = engine.extract_from_summary("我是开发者，住在北京", source_id);
 
         assert!(!cards.is_empty());
         // All cards should have source_memory_id set
