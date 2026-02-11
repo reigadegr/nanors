@@ -26,7 +26,7 @@ use uuid::Uuid;
 
 use command::{
     AgentInput, AgentStrategy, ChatInput, ChatStrategy, CommandStrategy, InfoStrategy,
-    InitStrategy, VersionStrategy,
+    InitStrategy, TelegramInput, TelegramStrategy, VersionStrategy,
 };
 
 #[derive(Parser)]
@@ -77,6 +77,16 @@ enum Commands {
     Version,
     /// Show configuration information
     Info,
+    /// Run Telegram bot
+    Telegram {
+        /// Bot token (overrides config)
+        #[arg(short = 't', long)]
+        token: Option<String>,
+
+        /// Allowed chat IDs (comma-separated, overrides config)
+        #[arg(short = 'a', long)]
+        allow_from: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -122,6 +132,12 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Info => {
             InfoStrategy.execute(()).await?;
+        }
+        Commands::Telegram { token, allow_from } => {
+            let allow_from = allow_from.map(|s| s.split(',').map(String::from).collect());
+            TelegramStrategy
+                .execute(TelegramInput { token, allow_from })
+                .await?;
         }
     }
 

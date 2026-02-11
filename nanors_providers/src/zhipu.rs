@@ -6,6 +6,7 @@ use tracing::info;
 
 use crate::retry::retry_with_backoff;
 
+#[derive(Clone)]
 pub struct ZhipuProvider {
     client: Client,
     api_key: String,

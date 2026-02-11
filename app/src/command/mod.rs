@@ -15,6 +15,7 @@ mod agent;
 mod chat;
 mod info;
 mod init;
+mod telegram;
 mod version;
 
 /// Set up memory storage (semantic retrieval) for agent.
@@ -48,6 +49,7 @@ pub use agent::{AgentInput, AgentStrategy};
 pub use chat::{ChatInput, ChatStrategy};
 pub use info::InfoStrategy;
 pub use init::InitStrategy;
+pub use telegram::{TelegramInput, TelegramStrategy};
 pub use version::VersionStrategy;
 
 /// Core trait defining the contract for all command strategies.

@@ -7,6 +7,7 @@ members = [
   "nanors_entities",
   "nanors_memory",
   "nanors_conversation",
+  "nanors_telegram",
 ]
 resolver = "3"
 
@@ -28,6 +29,8 @@ nanors_providers = { path = "nanors_providers" }
 nanors_config = { path = "nanors_config" }
 nanors_entities = { path = "nanors_entities" }
 nanors_memory = { path = "nanors_memory" }
+nanors_conversation = { path = "nanors_conversation" }
+nanors_telegram = { path = "nanors_telegram" }
 
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"

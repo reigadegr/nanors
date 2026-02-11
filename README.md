@@ -13,6 +13,7 @@ nanors 的 Rust 实现，采用渐进式开发策略和 workspace 架构。
 - **nanors_memory**: 长期记忆管理（向量检索 + Rerank）
 - **nanors_entities**: 数据库实体（Sea-ORM 生成）
 - **nanors_config**: 配置管理
+- **nanors_telegram**: Telegram Bot 集成
 
 ```
 nanors/
@@ -139,6 +140,11 @@ nanors init
         "max_items": 50
       }
     }
+  },
+  "telegram": {
+    "enabled": false,
+    "token": "your-telegram-bot-token-here",
+    "allow_from": []
   }
 }
 ```
@@ -153,6 +159,14 @@ nanors init
 | `agents.defaults.history_limit` | 多轮对话历史条数 | `20` |
 | `database.url` | 数据库连接 URL | PostgreSQL 格式 |
 | `memory.enabled` | 是否启用长期记忆 | `true` |
+
+### Telegram Bot 配置
+
+| 字段 | 说明 | 默认值 |
+|------|------|--------|
+| `telegram.enabled` | 是否启用 Telegram Bot | `false` |
+| `telegram.token` | Bot Token（从 @BotFather 获取） | 空 |
+| `telegram.allow_from` | 允许的用户/群组 ID 列表（空=全部允许） | `[]` |
 
 ### 3. 运行
 
@@ -267,6 +281,46 @@ nanors chat --history-limit 50
 - 支持会话恢复
 - Token 使用统计
 
+### `nanors telegram` - Telegram Bot **新功能**
+
+启动 Telegram Bot，持续监听并响应 Telegram 消息。
+
+**选项：**
+- `-t, --token <TOKEN>`: 覆盖配置文件中的 Bot Token
+- `-a, --allow_from <IDS>`: 允许的用户/群组 ID（逗号分隔）
+
+**示例：**
+
+```bash
+# 使用配置文件中的 token 启动
+nanors telegram
+
+# 覆盖 token
+nanors telegram -t "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
+
+# 只允许特定用户访问
+nanors telegram -a "123456789,987654321"
+```
+
+**使用步骤：**
+
+1. 在 Telegram 中找到 [@BotFather](https://t.me/BotFather)
+2. 发送 `/newbot` 创建新机器人，获取 Token
+3. 编辑 `~/nanors/config.json`，设置 `telegram.enabled = true` 并填入 Token
+4. 运行 `nanors telegram` 启动机器人
+5. 在 Telegram 中找到你的机器人，开始对话
+
+**支持的命令：**
+- `/start` - 开始使用机器人
+- `/reset` - 重置对话历史
+- `/help` - 显示帮助信息
+
+**特性：**
+- 持续运行监听消息（无需 webhook）
+- 每个用户/群组独立会话
+- 支持长期记忆检索
+- Ctrl+C 优雅退出
+
 ### `nanors init`
 
 初始化配置文件。
@@ -351,6 +405,11 @@ export RUSTFLAGS="-Z function-sections=yes -C link-arg=-fuse-ld=/usr/bin/mold -C
   - 智能重排序（Rerank）
 - ✅ IvorySQL/PostgreSQL 数据库支持
 - ✅ 0 clippy 警告（pedantic + nursery 标准）
+- ✅ Telegram Bot 集成（`nanors_telegram`）
+  - 持续监听消息（long polling 模式）
+  - 命令支持（/start, /reset, /help）
+  - 用户会话隔离
+  - 访问控制（allow_from 白名单）
 
 ## 代码规范
 

@@ -12,6 +12,8 @@ pub struct Config {
     pub database: DatabaseConfig,
     #[serde(default)]
     pub memory: MemoryConfig,
+    #[serde(default)]
+    pub telegram: TelegramConfig,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -42,6 +44,16 @@ pub struct MemoryConfig {
     pub default_user_scope: String,
     #[serde(default)]
     pub retrieval: RetrievalConfig,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+pub struct TelegramConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub token: String,
+    #[serde(default)]
+    pub allow_from: Vec<String>,
 }
 
 impl Default for MemoryConfig {
@@ -159,6 +171,11 @@ impl Config {
         "max_items": 50
       }
     }
+  },
+  "telegram": {
+    "enabled": false,
+    "token": "your-telegram-bot-token-here",
+    "allow_from": []
   }
 }"#;
 
