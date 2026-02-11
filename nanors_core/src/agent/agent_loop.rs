@@ -340,9 +340,4 @@ where
 
         debug!("Stored user message as memory");
     }
-
-    pub fn stop(&self) {
-        self.running
-            .store(false, std::sync::atomic::Ordering::Relaxed);
-    }
 }

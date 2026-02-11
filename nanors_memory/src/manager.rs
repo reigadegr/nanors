@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use chrono::Utc;
+use nanors_core::MemoryItemRepo;
 use nanors_core::memory::{MemoryItem, SalienceScore};
-use nanors_core::{ConversationSegment, ConversationSegmenter, MemoryItemRepo, SessionStorage};
 use nanors_entities::memory_items;
 use nanors_entities::sessions;
 use rayon::prelude::*;
@@ -9,13 +9,11 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, Database, DatabaseConnection, EntityTrait, ModelTrait,
     QueryFilter, Set,
 };
-use tracing::{debug, info};
+use tracing::info;
 use uuid::Uuid;
 
 use crate::convert;
 use crate::dedup;
-use crate::extraction::DatabaseCardRepository;
-use crate::query::{QueryExpander, QuestionTypeDetector};
 use crate::rerank::{Reranker, RuleBasedReranker};
 use crate::scoring;
 
@@ -29,16 +27,8 @@ use crate::scoring;
 pub struct MemoryManager {
     /// Database connection for persistence
     pub(crate) db: DatabaseConnection,
-    /// Repository for structured memory cards
-    pub(crate) card_repo: DatabaseCardRepository,
-    /// Detector for question type analysis
-    pub(crate) question_detector: QuestionTypeDetector,
-    /// Query expansion for improved recall
-    pub(crate) query_expander: QueryExpander,
     /// Reranker for result relevance tuning
     pub(crate) reranker: Box<dyn Reranker>,
-    /// Optional conversation segmenter
-    pub(crate) segmenter: Option<Box<dyn ConversationSegmenter>>,
 }
 
 impl MemoryManager {
@@ -51,12 +41,8 @@ impl MemoryManager {
         let db = Database::connect(database_url).await?;
         info!("MemoryManager initialized");
         Ok(Self {
-            db: db.clone(),
-            card_repo: DatabaseCardRepository::new(db),
-            question_detector: QuestionTypeDetector::with_defaults(),
-            query_expander: QueryExpander::with_defaults(),
+            db,
             reranker: Box::new(RuleBasedReranker::new()),
-            segmenter: None,
         })
     }
 
@@ -94,38 +80,9 @@ impl MemoryManager {
         let db = Database::connect(database_url).await?;
         info!("MemoryManager initialized with custom reranker");
         Ok(Self {
-            db: db.clone(),
-            card_repo: DatabaseCardRepository::new(db),
-            question_detector: QuestionTypeDetector::with_defaults(),
-            query_expander: QueryExpander::with_defaults(),
+            db,
             reranker: Box::new(reranker),
-            segmenter: None,
         })
-    }
-
-    /// Get a reference to the card repository.
-    #[must_use]
-    pub const fn card_repo(&self) -> &DatabaseCardRepository {
-        &self.card_repo
-    }
-
-    /// Get a reference to the question detector.
-    #[must_use]
-    pub const fn question_detector(&self) -> &QuestionTypeDetector {
-        &self.question_detector
-    }
-
-    /// Get a reference to the query expander.
-    #[must_use]
-    pub const fn query_expander(&self) -> &QueryExpander {
-        &self.query_expander
-    }
-
-    /// Set a conversation segmenter for automatic conversation segmentation
-    #[must_use]
-    pub fn with_segmenter(mut self, segmenter: Box<dyn ConversationSegmenter>) -> Self {
-        self.segmenter = Some(segmenter);
-        self
     }
 
     /// Clear a session by ID.
@@ -141,32 +98,6 @@ impl MemoryManager {
         let session_models = sessions::Entity::find().all(&self.db).await?;
 
         Ok(session_models.into_iter().map(|s| s.id).collect())
-    }
-
-    /// Segment a conversation into smaller parts for processing.
-    pub async fn segment_conversation(
-        &self,
-        session_id: &Uuid,
-    ) -> anyhow::Result<Vec<ConversationSegment>> {
-        let session = self.get_or_create(session_id).await?;
-
-        if let Some(segmenter) = &self.segmenter {
-            let config = segmenter.config();
-            let segments = segmenter
-                .segment(session_id, &session.messages, config)
-                .await?;
-
-            info!(
-                "Created {} segments for session {}",
-                segments.len(),
-                session_id
-            );
-
-            Ok(segments)
-        } else {
-            debug!("No segmenter configured, returning empty segments");
-            Ok(vec![])
-        }
     }
 
     /// Insert or update a memory item with deduplication.

@@ -29,9 +29,7 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use nanors_core::memory::{MemoryItem, SalienceScore};
-use nanors_core::{
-    ChatMessage, ConversationSegment, ConversationSegmenter, MemoryItemRepo, Role, SessionStorage,
-};
+use nanors_core::{ChatMessage, MemoryItemRepo, Role, SessionStorage};
 use nanors_entities::memory_items;
 use rayon::prelude::*;
 use sea_orm::{
@@ -54,8 +52,6 @@ pub struct StorageEngine {
     db: DatabaseConnection,
     /// Repository for structured memory cards
     pub(crate) card_repo: DatabaseCardRepository,
-    /// Optional conversation segmenter
-    pub(crate) segmenter: Option<Box<dyn ConversationSegmenter>>,
 }
 
 impl StorageEngine {
@@ -67,7 +63,6 @@ impl StorageEngine {
         Ok(Self {
             db: db.clone(),
             card_repo: DatabaseCardRepository::new(db),
-            segmenter: None,
         })
     }
 
@@ -96,25 +91,6 @@ impl StorageEngine {
         let session_models = sessions::Entity::find().all(&self.db).await?;
 
         Ok(session_models.into_iter().map(|s| s.id).collect())
-    }
-
-    /// Segment a conversation into smaller parts for processing.
-    pub async fn segment_conversation(
-        &self,
-        session_id: &Uuid,
-        _session_messages: &[ChatMessage],
-    ) -> anyhow::Result<Vec<ConversationSegment>> {
-        if let Some(segmenter) = &self.segmenter {
-            let config = segmenter.config();
-            // Note: The segmenter expects session messages from the session model
-            // For now, return empty segments since we don't have the full session here
-            let _ = (session_id, config);
-            debug!("Segmenter configured but session messages need to be fetched separately");
-            Ok(vec![])
-        } else {
-            debug!("No segmenter configured, returning empty segments");
-            Ok(vec![])
-        }
     }
 
     /// Insert or update a memory item with deduplication.
@@ -193,15 +169,6 @@ impl StorageEngine {
         Ok(())
     }
 
-    /// List all memories.
-    pub async fn list_by_scope(&self) -> anyhow::Result<Vec<MemoryItem>> {
-        let results = memory_items::Entity::find().all(&self.db).await?;
-        Ok(results
-            .into_iter()
-            .map(convert::memory_item_from_model)
-            .collect())
-    }
-
     /// Get or create a session.
     pub async fn get_or_create_session(&self, id: &Uuid) -> anyhow::Result<sessions::Model> {
         if let Some(session) = sessions::Entity::find_by_id(*id).one(&self.db).await? {
@@ -219,16 +186,6 @@ impl StorageEngine {
         Ok(new_session.insert(&self.db).await?)
     }
 
-    /// Add memory to a session.
-    pub async fn add_memory_to_session(
-        &self,
-        _session_id: &Uuid,
-        _memory_id: &Uuid,
-    ) -> anyhow::Result<()> {
-        // Sessions track memories through their messages
-        // This is a placeholder for future functionality
-        Ok(())
-    }
 }
 
 #[async_trait]
@@ -306,7 +263,7 @@ impl MemoryItemRepo for StorageEngine {
         Ok(())
     }
 
-    async fn list_by_scope(&self) -> anyhow::Result<Vec<MemoryItem>> {
+    async fn list_all(&self) -> anyhow::Result<Vec<MemoryItem>> {
         let results = memory_items::Entity::find().all(&self.db).await?;
         Ok(results
             .into_iter()
@@ -320,7 +277,7 @@ impl MemoryItemRepo for StorageEngine {
         query_text: &str,
         top_k: usize,
     ) -> anyhow::Result<Vec<SalienceScore<MemoryItem>>> {
-        let items: Vec<MemoryItem> = self.list_by_scope().await?;
+        let items: Vec<MemoryItem> = self.list_all().await?;
         let now = Utc::now();
 
         // Filter out items that are essentially the same as the query (similarity >= 0.95)
@@ -389,7 +346,7 @@ impl MemoryItemRepo for StorageEngine {
         &self,
         embed_fn: &(dyn Fn(String) -> anyhow::Result<Vec<f32>> + Send + Sync),
     ) -> anyhow::Result<usize> {
-        let items = self.list_by_scope().await?;
+        let items = self.list_all().await?;
         let mut count = 0;
 
         for item in items {

@@ -199,56 +199,6 @@ impl Default for CutoffStrategy {
     }
 }
 
-/// Result of adaptive retrieval with statistics.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AdaptiveResult<T> {
-    /// The filtered results.
-    pub results: Vec<T>,
-
-    /// Statistics about the adaptive retrieval.
-    pub stats: AdaptiveStats,
-}
-
-/// Statistics from adaptive retrieval.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AdaptiveStats {
-    /// Total results considered (before cutoff).
-    pub total_considered: usize,
-
-    /// Results returned (after cutoff).
-    pub returned: usize,
-
-    /// Index where cutoff occurred.
-    pub cutoff_index: usize,
-
-    /// Score at cutoff point.
-    pub cutoff_score: Option<f32>,
-
-    /// Top score (first result).
-    pub top_score: Option<f32>,
-
-    /// Score at cutoff as ratio of top score.
-    pub cutoff_ratio: Option<f32>,
-}
-
-impl<T> AdaptiveResult<T> {
-    /// Create an empty result.
-    #[must_use]
-    pub const fn empty() -> Self {
-        Self {
-            results: Vec::new(),
-            stats: AdaptiveStats {
-                total_considered: 0,
-                returned: 0,
-                cutoff_index: 0,
-                cutoff_score: None,
-                top_score: None,
-                cutoff_ratio: None,
-            },
-        }
-    }
-}
-
 /// Find the adaptive cutoff point for a list of scores.
 ///
 /// Returns the cutoff index. Results at indices `0..cutoff_index` should be included.
@@ -308,7 +258,7 @@ pub fn find_adaptive_cutoff(scores: &[f64], config: &AdaptiveConfig) -> usize {
 }
 
 /// Normalize scores to 0-1 range using min-max normalization.
-pub fn normalize_scores(scores: &[f32]) -> Vec<f32> {
+fn normalize_scores(scores: &[f32]) -> Vec<f32> {
     if scores.is_empty() {
         return Vec::new();
     }
