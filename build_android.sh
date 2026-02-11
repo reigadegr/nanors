@@ -17,6 +17,7 @@ export RUSTFLAGS="
     -C relro-level=none
     -C code-model=small
     -C relocation-model=pie
+    -C link-arg=-fuse-ld=mold
     -C symbol-mangling-version=v0
     -C llvm-args=-fp-contract=off
     -C llvm-args=-enable-misched
@@ -25,7 +26,7 @@ export RUSTFLAGS="
     -C link-arg=-Wl,--no-rosegment
     -C link-arg=-Wl,--sort-section=alignment
     -C link-args=-Wl,-O3,--gc-sections,--as-needed
-    -C link-args=-Wl,-x,-z,noexecstack,--pack-dyn-relocs=android+relr,-s,--strip-all,--relax
+    -C link-args=-Wl,-x,-z,noexecstack,--pack-dyn-relocs=relr,-s,--strip-all,--relax
 "
 
 if [ "$1" = "release" ] || [ "$1" = "r" ]; then

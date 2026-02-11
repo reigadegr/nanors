@@ -31,7 +31,7 @@ pub mod memory;
 pub mod retrieval;
 
 pub use agent::{AgentConfig, AgentLoop};
-pub use conversation::{ConversationSegment, ConversationSegmenter, SegmentationConfig};
+pub use conversation::{ConversationSegment, ConversationSegmenter};
 pub use memory::{MemoryItem, MemoryItemRepo, MemoryType, SalienceScore};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

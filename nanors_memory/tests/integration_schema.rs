@@ -5,9 +5,8 @@
 //! - Strict mode rejects unknown predicates
 //! - Schema inference works from existing data
 
-use nanors_memory::{
-    CardKind, CardRepository, DatabaseCardRepository, MemoryCard, SchemaRegistry, ValueType,
-};
+use nanors_memory::schema::{Cardinality, SchemaError, SchemaRegistry, ValueType};
+use nanors_memory::{CardKind, CardRepository, DatabaseCardRepository, MemoryCard};
 
 #[tokio::test]
 async fn test_schema_validation_valid_age() {
@@ -40,7 +39,7 @@ async fn test_schema_validation_invalid_age() {
     let result = registry.validate_card(&card);
     assert!(result.is_err());
 
-    if let Err(nanors_memory::SchemaError::InvalidRange { expected, .. }) = result {
+    if let Err(SchemaError::InvalidRange { expected, .. }) = result {
         assert_eq!(expected, "number");
     } else {
         panic!("Expected InvalidRange error");
@@ -79,7 +78,7 @@ async fn test_schema_validation_unknown_slot_strict() {
     let result = registry.validate_card(&card);
     assert!(result.is_err());
 
-    if let Err(nanors_memory::SchemaError::UnknownPredicate(slot)) = result {
+    if let Err(SchemaError::UnknownPredicate(slot)) = result {
         assert_eq!(slot, "unknown_slot");
     } else {
         panic!("Expected UnknownPredicate error");
@@ -104,10 +103,7 @@ async fn test_schema_inference_multiple() {
 
     let schema = registry.infer_from_values("hobby", &values);
 
-    assert!(matches!(
-        schema.cardinality,
-        nanors_memory::Cardinality::Multiple
-    ));
+    assert!(matches!(schema.cardinality, Cardinality::Multiple));
 }
 
 #[tokio::test]

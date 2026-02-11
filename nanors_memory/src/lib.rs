@@ -25,7 +25,7 @@ mod extraction;
 mod manager;
 pub mod query;
 pub mod rerank;
-mod schema;
+pub mod schema;
 mod scoring;
 mod session;
 
@@ -39,6 +39,3 @@ pub use extraction::{
 };
 pub use manager::MemoryManager;
 pub use query::{QueryExpander, QuestionType, QuestionTypeDetector};
-pub use rerank::{NoOpReranker, Reranker, RuleBasedReranker};
-pub use schema::{Cardinality, PredicateSchema, SchemaError, SchemaRegistry, ValueType};
-pub use scoring::{compute_salience, cosine_similarity};

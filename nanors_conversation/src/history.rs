@@ -142,19 +142,22 @@ impl HistoryWindow {
             None
         };
 
-        // Truncate from the front (oldest messages)
-        while !messages.is_empty()
-            && total_chars + messages[0].content.len() > self.config.max_chars
-        {
-            messages.remove(0);
+        // Keep messages from the end (newest first) while we have space
+        let mut kept: Vec<ChatMessage> = Vec::new();
+        while let Some(msg) = messages.pop() {
+            if total_chars + msg.content.len() <= self.config.max_chars {
+                total_chars += msg.content.len();
+                kept.push(msg);
+            }
         }
+        kept.reverse();
 
         // Reconstruct with first message if it was saved
         if let Some(first) = first_msg {
-            messages.insert(0, first);
+            kept.insert(0, first);
         }
 
-        messages
+        kept
     }
 
     /// Get current configuration.
