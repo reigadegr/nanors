@@ -10,9 +10,8 @@ nanors_config = { workspace = true }
 nanors_memory = { workspace = true }
 nanors_conversation = { workspace = true }
 
-teloxide = { version = "0.17", features = ["macros", "ctrlc_handler"] }
 dptree = "0.3"
-
+teloxide = { workspace = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
