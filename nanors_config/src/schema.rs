@@ -102,7 +102,7 @@ impl Config {
     pub fn load() -> anyhow::Result<Self> {
         let config_dir = dirs::home_dir()
             .ok_or_else(|| anyhow::anyhow!("Cannot find home directory"))?
-            .join("nanors");
+            .join(".nanors");
 
         let config_path = config_dir.join("config.json");
 
@@ -122,7 +122,7 @@ impl Config {
     pub fn ensure_config_dir() -> anyhow::Result<PathBuf> {
         let config_dir = dirs::home_dir()
             .ok_or_else(|| anyhow::anyhow!("Cannot find home directory"))?
-            .join("nanors");
+            .join(".nanors");
 
         std::fs::create_dir_all(&config_dir)?;
         Ok(config_dir)
@@ -173,7 +173,7 @@ impl Config {
     }
   },
   "telegram": {
-    "enabled": false,
+    "enabled": true,
     "token": "your-telegram-bot-token-here",
     "allow_from": []
   }
