@@ -21,7 +21,7 @@
 
 mod convert;
 mod dedup;
-mod extraction;
+pub mod extraction;
 mod manager;
 pub mod query;
 pub mod rerank;
@@ -33,9 +33,4 @@ mod session;
 pub use nanors_core::SessionStorage;
 
 pub use dedup::content_hash;
-pub use extraction::{
-    CardKind, CardRepository, DatabaseCardRepository, ExtractionConfig, ExtractionEngine,
-    MemoryCard, Polarity, VersionRelation,
-};
 pub use manager::MemoryManager;
-pub use query::{QueryExpander, QuestionType, QuestionTypeDetector};

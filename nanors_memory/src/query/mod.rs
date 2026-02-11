@@ -5,6 +5,3 @@
 
 pub mod detector;
 pub mod expander;
-
-pub use detector::{QuestionType, QuestionTypeDetector};
-pub use expander::QueryExpander;

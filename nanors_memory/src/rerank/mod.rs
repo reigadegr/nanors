@@ -4,7 +4,7 @@
 //! results after the initial vector similarity search. The rule-based reranker
 //! applies question-type-specific boosting to improve result quality.
 
-use crate::query::{QuestionType, QuestionTypeDetector};
+use crate::query::detector::{QuestionType, QuestionTypeDetector};
 use crate::scoring;
 use chrono::Utc;
 use nanors_core::memory::{MemoryItem, SalienceScore};

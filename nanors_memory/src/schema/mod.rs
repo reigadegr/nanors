@@ -6,6 +6,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::extraction::cards::MemoryCard;
+
 /// Value type for memory card slots.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -213,7 +215,7 @@ impl SchemaRegistry {
     /// Returns `SchemaError` if:
     /// - The card's slot has a registered schema that the value doesn't match
     /// - `strict` mode is enabled and the slot is unknown
-    pub fn validate_card(&self, card: &crate::MemoryCard) -> Result<(), SchemaError> {
+    pub fn validate_card(&self, card: &MemoryCard) -> Result<(), SchemaError> {
         if let Some(schema) = self.schemas.get(&card.slot) {
             schema.validate_value(&card.value)?;
         } else if self.strict {

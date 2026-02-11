@@ -116,6 +116,7 @@ impl PatternDef {
 /// Default pattern set for common Chinese and English statements.
 ///
 /// This provides a sensible default that can be overridden via configuration.
+#[must_use]
 pub fn default_patterns() -> Vec<PatternDef> {
     let mut patterns = Vec::new();
     patterns.extend(user_identity_patterns());

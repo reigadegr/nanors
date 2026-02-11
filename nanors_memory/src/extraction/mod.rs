@@ -7,10 +7,4 @@ pub mod cards;
 pub mod engine;
 pub mod patterns;
 
-// Core types
-pub use cards::{CardKind, MemoryCard, Polarity, VersionRelation};
-
-// Engine and repository
-pub use engine::{CardRepository, DatabaseCardRepository, ExtractionConfig, ExtractionEngine};
-
 // Pattern configuration
