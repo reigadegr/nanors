@@ -78,7 +78,7 @@ pub struct AgentDefaults {
 impl Default for AgentDefaults {
     fn default() -> Self {
         Self {
-            model: "glm-4-flash".to_string(),
+            model: "glm-4.7-flash".to_string(),
             max_tokens: 8192,
             temperature: 0.7,
             system_prompt: Some(
@@ -173,7 +173,7 @@ impl Config {
         println!("   3. Run 'nanors chat' to start a conversation");
         println!();
         println!("🔧 Configuration options:");
-        println!("   - model: AI model to use (glm-4-flash, glm-4-plus, glm-4-0520, etc.)");
+        println!("   - model: AI model to use (glm-4.7-flash, glm-4-plus, glm-4-0520, etc.)");
         println!("   - history_limit: Number of messages to keep in context (for chat command)");
         println!();
         Ok(())
@@ -189,7 +189,7 @@ mod tests {
         let config = Config::default();
 
         // 验证 agents 配置
-        assert_eq!(config.agents.defaults.model, "glm-4-flash");
+        assert_eq!(config.agents.defaults.model, "glm-4.7-flash");
         assert_eq!(config.agents.defaults.max_tokens, 8192);
         // 浮点数使用近似比较
         assert!((config.agents.defaults.temperature - 0.7).abs() < f32::EPSILON);
@@ -214,15 +214,14 @@ mod tests {
     }
 
     #[test]
-    fn test_config_serialization_roundtrip() {
+    fn test_config_serialization_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
         let original = Config::default();
 
         // 序列化为 JSON
-        let json = serde_json::to_string_pretty(&original).expect("Failed to serialize config");
+        let json = serde_json::to_string_pretty(&original)?;
 
         // 反序列化回 Config
-        let deserialized: Config =
-            serde_json::from_str(&json).expect("Failed to deserialize config");
+        let deserialized: Config = serde_json::from_str(&json)?;
 
         // 验证所有字段一致
         assert_eq!(
@@ -256,15 +255,16 @@ mod tests {
             original.telegram.allow_from,
             deserialized.telegram.allow_from
         );
+        Ok(())
     }
 
     #[test]
-    fn test_config_json_is_valid() {
+    fn test_config_json_is_valid() -> Result<(), Box<dyn std::error::Error>> {
         let config = Config::default();
-        let json = serde_json::to_string_pretty(&config).expect("Failed to serialize config");
+        let json = serde_json::to_string_pretty(&config)?;
 
         // 验证 JSON 格式正确（可以再次解析）
-        let _: Config = serde_json::from_str(&json).expect("Generated JSON is invalid");
+        let _: Config = serde_json::from_str(&json)?;
 
         // 验证 JSON 包含预期的键
         assert!(json.contains("\"agents\""));
@@ -272,19 +272,20 @@ mod tests {
         assert!(json.contains("\"database\""));
         assert!(json.contains("\"memory\""));
         assert!(json.contains("\"telegram\""));
-        assert!(json.contains("\"glm-4-flash\""));
+        assert!(json.contains("\"glm-4.7-flash\""));
         assert!(json.contains("\"your-zhipu-api-key-here\""));
+        Ok(())
     }
 
     #[test]
     fn test_default_impl_for_all_configs() {
         // 验证所有配置结构体都有正确的 Default 实现
         let agent_defaults = AgentDefaults::default();
-        assert_eq!(agent_defaults.model, "glm-4-flash");
+        assert_eq!(agent_defaults.model, "glm-4.7-flash");
         assert_eq!(agent_defaults.max_tokens, 8192);
 
         let agents = AgentsConfig::default();
-        assert_eq!(agents.defaults.model, "glm-4-flash");
+        assert_eq!(agents.defaults.model, "glm-4.7-flash");
 
         let provider = ProviderConfig::default();
         assert_eq!(provider.api_key, "your-zhipu-api-key-here");
@@ -307,6 +308,6 @@ mod tests {
         assert_eq!(memory.retrieval.items_top_k, 5);
 
         let config = Config::default();
-        assert_eq!(config.agents.defaults.model, "glm-4-flash");
+        assert_eq!(config.agents.defaults.model, "glm-4.7-flash");
     }
 }
