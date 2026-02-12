@@ -118,13 +118,6 @@ impl TurnContext {
         }
     }
 
-    /// Add retrieved context.
-    #[must_use]
-    pub fn with_context(mut self, context: String) -> Self {
-        self.retrieved_context = Some(context);
-        self
-    }
-
     /// Set turn number.
     #[must_use]
     pub const fn with_turn_number(mut self, turn: usize) -> Self {
@@ -327,36 +320,6 @@ where
         &self.current_session
     }
 
-    /// Get conversation statistics.
-    #[must_use]
-    pub fn stats(&self) -> ConversationStats {
-        let total_chars: usize = self
-            .current_session
-            .messages
-            .iter()
-            .map(|m| m.content.len())
-            .sum();
-
-        ConversationStats {
-            session_id: self.config.session_id,
-            turn_count: self.current_session.message_count() / 2,
-            total_messages: self.current_session.message_count(),
-            total_tokens_estimated: total_chars / 4, // Rough estimate: 4 chars per token
-        }
-    }
-
-    /// Clear conversation history.
-    pub fn clear_history(&mut self) -> Result<(), ConversationError> {
-        info!("Clearing history for session: {}", self.config.session_id);
-
-        self.current_session.clear();
-
-        // Note: We don't clear from storage as it may be desired to keep history
-        // To fully clear, you would need to implement a delete method in SessionStorage
-
-        Ok(())
-    }
-
     /// Load or create a session from storage.
     async fn load_or_create_session(
         storage: &S,
@@ -409,15 +372,6 @@ where
     }
 }
 
-/// Statistics about a conversation.
-#[derive(Debug, Clone)]
-pub struct ConversationStats {
-    pub session_id: Uuid,
-    pub turn_count: usize,
-    pub total_messages: usize,
-    pub total_tokens_estimated: usize,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -431,9 +385,9 @@ mod tests {
 
     #[test]
     fn test_turn_context() {
-        let ctx = TurnContext::new("Hello".to_string())
-            .with_context("Some context".to_string())
-            .with_turn_number(5);
+        let mut ctx = TurnContext::new("Hello".to_string());
+        ctx.retrieved_context = Some("Some context".to_string());
+        ctx = ctx.with_turn_number(5);
 
         assert_eq!(ctx.user_input, "Hello");
         assert_eq!(ctx.retrieved_context, Some("Some context".to_string()));

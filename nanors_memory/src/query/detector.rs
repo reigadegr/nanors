@@ -108,13 +108,6 @@ impl QuestionPattern {
         }
     }
 
-    /// Create a pattern with custom priority.
-    #[must_use]
-    pub const fn with_priority(mut self, priority: i32) -> Self {
-        self.priority = priority;
-        self
-    }
-
     /// Check if this pattern matches the given query.
     #[must_use]
     pub fn matches(&self, query: &str) -> bool {
@@ -160,64 +153,67 @@ impl Default for QuestionDetectorConfig {
 pub fn default_patterns() -> Vec<QuestionPattern> {
     vec![
         // WhatKind patterns - highest priority for identity questions
-        QuestionPattern::new(
-            QuestionType::WhatKind,
-            r"(?i)(我是什么|我是谁|我的身份|我的类型|我属于|我算.*用户|我属于.*吗)",
-        )
-        .with_priority(100),
-        QuestionPattern::new(
-            QuestionType::WhatKind,
-            r"(?i)(what kind|what type|who am i|what am i|my identity)",
-        )
-        .with_priority(90),
+        QuestionPattern {
+            question_type: QuestionType::WhatKind,
+            pattern: r"(?i)(我是什么|我是谁|我的身份|我的类型|我属于|我算.*用户|我属于.*吗)"
+                .to_string(),
+            priority: 100,
+        },
+        QuestionPattern {
+            question_type: QuestionType::WhatKind,
+            pattern: r"(?i)(what kind|what type|who am i|what am i|my identity)".to_string(),
+            priority: 90,
+        },
         // Recency patterns
-        QuestionPattern::new(
-            QuestionType::Recency,
-            r"(?i)(现在|目前|最新|当前|最近|current|latest|right now|at the moment|up to date)",
-        )
-        .with_priority(80),
+        QuestionPattern {
+            question_type: QuestionType::Recency,
+            pattern:
+                r"(?i)(现在|目前|最新|当前|最近|current|latest|right now|at the moment|up to date)"
+                    .to_string(),
+            priority: 80,
+        },
         // HowMany patterns
-        QuestionPattern::new(
-            QuestionType::HowMany,
-            r"(?i)(多少|有几个|几多|how many|how much|count of|number of)",
-        )
-        .with_priority(70),
+        QuestionPattern {
+            question_type: QuestionType::HowMany,
+            pattern: r"(?i)(多少|有几个|几多|how many|how much|count of|number of)".to_string(),
+            priority: 70,
+        },
         // Update/change patterns
-        QuestionPattern::new(
-            QuestionType::Update,
-            r"(?i)(之前|原来|之前是|以前.*现在|changed|updated|was.*now)",
-        )
-        .with_priority(60),
+        QuestionPattern {
+            question_type: QuestionType::Update,
+            pattern: r"(?i)(之前|原来|之前是|以前.*现在|changed|updated|was.*now)".to_string(),
+            priority: 60,
+        },
         // Where patterns
-        QuestionPattern::new(
-            QuestionType::Where,
-            r"(?i)(在哪|在哪里|在哪里|where|which place|which location)",
-        )
-        .with_priority(50),
+        QuestionPattern {
+            question_type: QuestionType::Where,
+            pattern: r"(?i)(在哪|在哪里|在哪里|where|which place|which location)".to_string(),
+            priority: 50,
+        },
         // When patterns
-        QuestionPattern::new(
-            QuestionType::When,
-            r"(?i)(什么时候|何时|when|at what time|what time)",
-        )
-        .with_priority(45),
+        QuestionPattern {
+            question_type: QuestionType::When,
+            pattern: r"(?i)(什么时候|何时|when|at what time|what time)".to_string(),
+            priority: 45,
+        },
         // Preference patterns
-        QuestionPattern::new(
-            QuestionType::Preference,
-            r"(?i)(喜欢什么|爱什么|偏好|what.*like|what do you like)",
-        )
-        .with_priority(40),
+        QuestionPattern {
+            question_type: QuestionType::Preference,
+            pattern: r"(?i)(喜欢什么|爱什么|偏好|what.*like|what do you like)".to_string(),
+            priority: 40,
+        },
         // Have/possession patterns
-        QuestionPattern::new(
-            QuestionType::Have,
-            r"(?i)(有什么|拥有|have|have.*got|possess)",
-        )
-        .with_priority(35),
+        QuestionPattern {
+            question_type: QuestionType::Have,
+            pattern: r"(?i)(有什么|拥有|have|have.*got|possess)".to_string(),
+            priority: 35,
+        },
         // Can/capability patterns
-        QuestionPattern::new(
-            QuestionType::Can,
-            r"(?i)(会.*吗|能.*吗|can you|able to|capable of)",
-        )
-        .with_priority(30),
+        QuestionPattern {
+            question_type: QuestionType::Can,
+            pattern: r"(?i)(会.*吗|能.*吗|can you|able to|capable of)".to_string(),
+            priority: 30,
+        },
     ]
 }
 
@@ -383,13 +379,9 @@ mod tests {
         let mut detector = QuestionTypeDetector::with_defaults();
         let original_count = detector.patterns().len();
 
-        detector.add_pattern(
-            QuestionPattern::new(QuestionType::WhatKind, "test pattern").with_priority(200),
-        );
+        detector.add_pattern(QuestionPattern::new(QuestionType::WhatKind, "test pattern"));
 
         assert_eq!(detector.patterns().len(), original_count + 1);
-        // New pattern with higher priority should be first
-        assert_eq!(detector.patterns()[0].priority, 200);
     }
 
     #[test]

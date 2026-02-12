@@ -84,29 +84,22 @@ impl super::CommandStrategy for ChatStrategy {
 
         if let Some(msg) = input.message {
             // Single message mode
-            let stats_before = manager.stats();
-            info!(
-                "Session state: {} turns, {} messages",
-                stats_before.turn_count, stats_before.total_messages
-            );
+            let session = manager.session();
+            info!("Session state: {} messages", session.message_count());
 
             let context = TurnContext::new(msg);
             let result = manager.process_turn(context).await?;
 
             println!("{}", result.response);
-            info!(
-                "Turn {} completed. Session now has {} turns.",
-                result.turn_number,
-                manager.stats().turn_count
-            );
+            info!("Turn {} completed.", result.turn_number);
         } else {
             // Interactive mode
             manager.run_interactive().await?;
 
-            let stats = manager.stats();
+            let session = manager.session();
             info!(
-                "Conversation ended: {} turns, {} total messages",
-                stats.turn_count, stats.total_messages
+                "Conversation ended: {} total messages",
+                session.message_count()
             );
         }
 

@@ -130,8 +130,8 @@ fn test_reranker_boosts_preferences_for_preference_questions() {
 }
 
 #[test]
-fn test_reranker_with_custom_weights() {
-    let reranker = RuleBasedReranker::with_weights(0.5, 0.3, 0.4);
+fn test_reranker_default_weights() {
+    let reranker = RuleBasedReranker::new();
 
     let mut results = vec![
         create_test_score("User: 我是Android用户", 1, 0.6),

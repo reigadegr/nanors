@@ -101,26 +101,6 @@ impl RuleBasedReranker {
         }
     }
 
-    /// Create a new rule-based reranker with custom weights.
-    ///
-    /// # Arguments
-    /// * `keyword_boost_weight` - Weight for keyword matching boost (0.0-1.0)
-    /// * `recency_boost_weight` - Weight for recency boost (0.0-1.0)
-    /// * `profile_boost_weight` - Weight for profile fact boost (0.0-1.0)
-    #[must_use]
-    pub fn with_weights(
-        keyword_boost_weight: f64,
-        recency_boost_weight: f64,
-        profile_boost_weight: f64,
-    ) -> Self {
-        Self {
-            question_detector: QuestionTypeDetector::with_defaults(),
-            keyword_boost_weight,
-            recency_boost_weight,
-            profile_boost_weight,
-        }
-    }
-
     /// Compute boost based on question type.
     fn compute_boost(&self, item: &MemoryItem, question_type: QuestionType) -> f64 {
         let summary_lower = item.summary.to_lowercase();

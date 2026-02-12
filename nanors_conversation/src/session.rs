@@ -40,19 +40,6 @@ impl ConversationSession {
         }
     }
 
-    /// Create a session with a specific ID.
-    #[must_use]
-    pub fn with_id(id: Uuid) -> Self {
-        let now = Utc::now();
-        Self {
-            id,
-            name: None,
-            messages: Vec::new(),
-            created_at: now,
-            updated_at: now,
-        }
-    }
-
     /// Set session name.
     #[must_use]
     pub fn with_name(mut self, name: String) -> Self {

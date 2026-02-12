@@ -87,13 +87,6 @@ impl MemoryManager {
         Ok(())
     }
 
-    /// List all session IDs.
-    pub async fn list_sessions(&self) -> anyhow::Result<Vec<Uuid>> {
-        let session_models = sessions::Entity::find().all(&self.db).await?;
-
-        Ok(session_models.into_iter().map(|s| s.id).collect())
-    }
-
     /// Insert or update a memory item with deduplication.
     ///
     /// If an item with the same content hash already exists in the scope,
