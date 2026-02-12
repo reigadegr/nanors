@@ -180,7 +180,7 @@ where
     }
 
     /// Build the system prompt with memory retrieval.
-    async fn build_system_prompt(&self, query: &str) -> String {
+    pub async fn build_system_prompt(&self, query: &str) -> String {
         let Some(memory_manager) = &self.memory_manager else {
             return "You are a helpful AI assistant.".to_string();
         };

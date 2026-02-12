@@ -1724,6 +1724,7 @@ name = "nanors_telegram"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "dptree",
  "nanors_config",
  "nanors_conversation",
@@ -1731,6 +1732,7 @@ dependencies = [
  "nanors_memory",
  "nanors_providers",
  "serde",
+ "sha2",
  "teloxide",
  "thiserror 2.0.18",
  "tokio",

@@ -20,13 +20,16 @@
 use crate::{Error, Result};
 use nanors_config::Config;
 use nanors_conversation::{ConversationConfig, ConversationManager, TurnContext};
-use nanors_core::SessionStorage;
+use nanors_core::{
+    AgentConfig, AgentLoop, LLMProvider, MemoryItem, MemoryItemRepo, MemoryType, SessionStorage,
+};
 use nanors_memory::MemoryManager;
 use nanors_providers::ZhipuProvider;
+use sha2::Digest;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use teloxide::prelude::*;
 use tokio::time::sleep;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 /// Session data for each chat
@@ -174,11 +177,69 @@ impl TelegramBot {
         let session_data = self.get_or_create_session_manager(chat_id).await?;
         let mut manager = session_data.manager.lock().await;
 
-        let context = TurnContext::new(text);
+        // Step 1: Use AgentLoop to retrieve memory and build system prompt
+        let agent_config = AgentConfig {
+            model: self.config.agents.defaults.model.clone(),
+            max_tokens: self.config.agents.defaults.max_tokens,
+            temperature: self.config.agents.defaults.temperature,
+        };
+
+        let agent_loop = AgentLoop::new(
+            self.provider.clone(),
+            self.memory_manager.clone(),
+            agent_config,
+        )
+        .with_memory(self.memory_manager.clone());
+
+        // Retrieve memory and build system prompt
+        let memory_context = agent_loop.build_system_prompt(&text).await;
+
+        // Step 2: Pass retrieved context to ConversationManager
+        let mut context = TurnContext::new(text.clone());
+        context.retrieved_context = Some(memory_context);
+
+        // Step 3: Process turn with memory-enhanced context
         let result = manager
             .process_turn(context)
             .await
             .map_err(|e| Error::Provider(anyhow::anyhow!("{e}")))?;
+
+        // Step 4: Save user message to long-term memory
+        let now = chrono::Utc::now();
+        let user_embedding = match self.provider.embed(&text).await {
+            Ok(embedding) => Some(embedding),
+            Err(e) => {
+                debug!("Failed to generate user embedding: {e}");
+                None
+            }
+        };
+
+        let user_memory = MemoryItem {
+            id: Uuid::now_v7(),
+            memory_type: MemoryType::Episodic,
+            summary: format!("User: {text}"),
+            embedding: user_embedding,
+            happened_at: now,
+            extra: None,
+            content_hash: format!("{:x}", sha2::Sha256::digest(format!("episodic:{text}"))),
+            reinforcement_count: 0,
+            created_at: now,
+            updated_at: now,
+        };
+
+        // Use semantic upsert to handle fact updates (e.g., location changes)
+        match self
+            .memory_manager
+            .semantic_upsert(&user_memory, 0.85)
+            .await
+        {
+            Ok(id) => {
+                debug!("Stored user memory: {}", id);
+            }
+            Err(e) => {
+                debug!("Failed to store user memory: {e}");
+            }
+        }
 
         drop(manager);
         Ok(result.response)
