@@ -3,7 +3,6 @@
 //! The `ConversationManager` is the main entry point for handling
 //! persistent conversations with context across turns.
 
-use crate::history::HistoryManager;
 use crate::session::ConversationSession;
 use nanors_core::{ChatMessage, LLMProvider, Role, SessionStorage};
 use std::io::Write;
@@ -167,7 +166,6 @@ where
     provider: P,
     storage: S,
     config: ConversationConfig,
-    history_manager: HistoryManager,
     current_session: ConversationSession,
 }
 
@@ -190,15 +188,10 @@ where
         // Try to load existing session
         let current_session = Self::load_or_create_session(&storage, &config).await?;
 
-        let history_manager = HistoryManager::new(
-            crate::history::HistoryConfig::default().with_max_messages(config.history_limit),
-        );
-
         Ok(Self {
             provider,
             storage,
             config,
-            history_manager,
             current_session,
         })
     }
@@ -224,11 +217,23 @@ where
         // Build messages for LLM
         let system_prompt = self.build_system_prompt(&context);
 
-        let history: Vec<ChatMessage> = self.current_session.messages.clone();
+        // Apply history limit - keep last N messages plus system prompt
+        let history: Vec<ChatMessage> = self
+            .current_session
+            .last_n_messages(self.config.history_limit)
+            .to_vec();
 
-        let messages =
-            self.history_manager
-                .build_llm_messages(&system_prompt, &history, &context.user_input);
+        // Build full message list: system prompt + history (excluding new user message which we'll add)
+        let mut messages = Vec::new();
+        messages.push(ChatMessage {
+            role: Role::System,
+            content: system_prompt,
+        });
+        messages.extend(history);
+        messages.push(ChatMessage {
+            role: Role::User,
+            content: context.user_input.clone(),
+        });
 
         // Send to LLM
         let llm_response = self
@@ -325,13 +330,18 @@ where
     /// Get conversation statistics.
     #[must_use]
     pub fn stats(&self) -> ConversationStats {
-        let history_stats = self.history_manager.stats(&self.current_session.messages);
+        let total_chars: usize = self
+            .current_session
+            .messages
+            .iter()
+            .map(|m| m.content.len())
+            .sum();
 
         ConversationStats {
             session_id: self.config.session_id,
             turn_count: self.current_session.message_count() / 2,
             total_messages: self.current_session.message_count(),
-            total_tokens_estimated: history_stats.estimated_tokens,
+            total_tokens_estimated: total_chars / 4, // Rough estimate: 4 chars per token
         }
     }
 

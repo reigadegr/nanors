@@ -28,10 +28,8 @@
 //! - Optional memory retrieval integration
 //! - Conversation summarization for long sessions
 
-mod history;
 mod manager;
 mod session;
 
-pub use history::{HistoryConfig, HistoryManager, HistoryWindow};
 pub use manager::{ConversationConfig, ConversationManager, TurnContext};
 pub use session::ConversationSession;
