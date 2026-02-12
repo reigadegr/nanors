@@ -3,7 +3,7 @@
 //! This module provides reranking capabilities that can be applied to search
 //! results after the initial vector similarity search. The rule-based reranker
 //! applies question-type-specific boosting to improve result quality.
-
+//!
 use crate::query::detector::{QuestionType, QuestionTypeDetector};
 use crate::scoring;
 use chrono::Utc;
@@ -238,21 +238,6 @@ impl Reranker for RuleBasedReranker {
     }
 }
 
-/// No-op reranker that returns results unchanged.
-///
-/// Useful for disabling reranking without changing code paths.
-pub struct NoOpReranker;
-
-impl Reranker for NoOpReranker {
-    fn rerank(
-        &self,
-        results: Vec<SalienceScore<MemoryItem>>,
-        _query_text: &str,
-    ) -> Vec<SalienceScore<MemoryItem>> {
-        results
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -356,7 +341,7 @@ mod tests {
 
         results = reranker.rerank(results, "我住哪");
 
-        // First result should be the fact (answer), not the question
+        // First result should be fact (answer), not question
         assert!(
             !results[0].item.summary.contains("哪"),
             "Fact should rank higher than question"
@@ -379,20 +364,5 @@ mod tests {
             results[0].item.happened_at > results[1].item.happened_at,
             "Recent memory should rank higher for recency question"
         );
-    }
-
-    #[test]
-    fn test_noop_reranker() {
-        let reranker = NoOpReranker;
-
-        let results = vec![
-            create_test_score("Test A", 1, 0.8),
-            create_test_score("Test B", 1, 0.6),
-        ];
-
-        let reranked = reranker.rerank(results.clone(), "test query");
-
-        assert_eq!(reranked.len(), results.len());
-        assert_eq!(reranked[0].item.summary, results[0].item.summary);
     }
 }

@@ -55,19 +55,13 @@ impl MemoryManager {
     /// # Example
     /// ```no_run
     /// use nanors_memory::MemoryManager;
-    /// use nanors_memory::rerank::{NoOpReranker, RuleBasedReranker};
+    /// use nanors_memory::rerank::RuleBasedReranker;
     ///
     /// # async fn example() -> anyhow::Result<()> {
     /// // With rule-based reranker (default)
     /// let manager = MemoryManager::with_reranker(
     ///     "postgresql://...",
     ///     RuleBasedReranker::new()
-    /// ).await?;
-    ///
-    /// // With no-op reranker (disabled)
-    /// let manager = MemoryManager::with_reranker(
-    ///     "postgresql://...",
-    ///     NoOpReranker
     /// ).await?;
     /// # Ok(())
     /// # }

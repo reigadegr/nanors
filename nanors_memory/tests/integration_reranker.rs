@@ -5,7 +5,7 @@
 
 use chrono::{Duration, Utc};
 use nanors_core::memory::{MemoryItem, MemoryType, SalienceScore};
-use nanors_memory::rerank::{NoOpReranker, Reranker, RuleBasedReranker};
+use nanors_memory::rerank::{Reranker, RuleBasedReranker};
 use uuid::Uuid;
 
 fn create_test_memory(summary: &str, hours_ago: i64) -> MemoryItem {
@@ -127,21 +127,6 @@ fn test_reranker_boosts_preferences_for_preference_questions() {
         results[0].item.summary.contains("喜欢"),
         "Preference fact should rank first"
     );
-}
-
-#[test]
-fn test_noop_reranker_passes_through_unchanged() {
-    let reranker = NoOpReranker;
-
-    let results = vec![
-        create_test_score("Test A", 1, 0.8),
-        create_test_score("Test B", 1, 0.6),
-    ];
-
-    let result = reranker.rerank(results.clone(), "test query");
-
-    assert_eq!(result.len(), results.len());
-    assert_eq!(result[0].item.summary, results[0].item.summary);
 }
 
 #[test]
