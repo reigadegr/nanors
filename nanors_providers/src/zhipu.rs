@@ -321,10 +321,6 @@ impl LLMProvider for ZhipuProvider {
             "Sending tool-enabled request to Zhipu API: model={}, tools={}",
             model, tool_count
         );
-        info!(
-            "Request messages: {}",
-            serde_json::to_string_pretty(&request)?
-        );
 
         // Retry with exponential backoff
         let base_delays: [u64; 4] = [2, 4, 6, 8];
@@ -393,11 +389,6 @@ impl ZhipuProvider {
             .await?;
 
         let response_json = Self::handle_http_response(response).await?;
-
-        info!(
-            "Raw Zhipu API response: {}",
-            serde_json::to_string_pretty(&response_json)?
-        );
 
         let (content, stop_reason, usage) = Self::extract_content_blocks(&response_json)?;
 
