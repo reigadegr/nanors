@@ -1,17 +1,7 @@
-use sha2::{Digest, Sha256};
+//! Content hashing utilities.
 
-/// Compute a SHA-256 content hash for deduplication.
-///
-/// Mirrors memU's `compute_content_hash`: concatenates memory type and
-/// summary, then returns the hex-encoded SHA-256 digest.
-#[must_use]
-pub fn content_hash(memory_type: &str, summary: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(memory_type.as_bytes());
-    hasher.update(b":");
-    hasher.update(summary.as_bytes());
-    format!("{:x}", hasher.finalize())
-}
+//! Re-export `content_hash` from `nanors_core` to avoid duplication.
+pub use nanors_core::content_hash;
 
 #[cfg(test)]
 mod tests {

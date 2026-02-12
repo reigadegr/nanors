@@ -1,7 +1,6 @@
 //! Agent loop for processing messages with memory retrieval.
 
 use serde::{Deserialize, Serialize};
-use sha2::Digest;
 use std::io::Write;
 use std::sync::{Arc, atomic::AtomicBool};
 use tracing::{debug, info};
@@ -314,7 +313,7 @@ where
             embedding: user_embedding,
             happened_at: now,
             extra: None,
-            content_hash: format!("{:x}", sha2::Sha256::digest(format!("episodic:{content}"))),
+            content_hash: crate::content_hash("episodic", content),
             reinforcement_count: 0,
             created_at: now,
             updated_at: now,

@@ -25,7 +25,6 @@ use nanors_core::{
 };
 use nanors_memory::MemoryManager;
 use nanors_providers::ZhipuProvider;
-use sha2::Digest;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use teloxide::prelude::*;
 use tokio::time::sleep;
@@ -221,7 +220,7 @@ impl TelegramBot {
             embedding: user_embedding,
             happened_at: now,
             extra: None,
-            content_hash: format!("{:x}", sha2::Sha256::digest(format!("episodic:{text}"))),
+            content_hash: nanors_core::content_hash("episodic", &text),
             reinforcement_count: 0,
             created_at: now,
             updated_at: now,

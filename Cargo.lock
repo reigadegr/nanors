@@ -1732,7 +1732,6 @@ dependencies = [
  "nanors_memory",
  "nanors_providers",
  "serde",
- "sha2",
  "teloxide",
  "thiserror 2.0.18",
  "tokio",

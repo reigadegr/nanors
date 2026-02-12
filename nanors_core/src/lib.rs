@@ -28,9 +28,11 @@ use uuid::Uuid;
 pub mod agent;
 pub mod memory;
 pub mod retrieval;
+mod util;
 
 pub use agent::{AgentConfig, AgentLoop};
 pub use memory::{MemoryItem, MemoryItemRepo, MemoryType, SalienceScore};
+pub use util::content_hash;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
