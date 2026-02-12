@@ -46,7 +46,34 @@ pub enum Role {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: Role,
-    pub content: String,
+    pub content: MessageContent,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum MessageContent {
+    Text(String),
+    Blocks(Vec<ContentBlock>),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "type")]
+pub enum ContentBlock {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "tool_use")]
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    #[serde(rename = "tool_result")]
+    ToolResult {
+        tool_use_id: String,
+        content: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        is_error: Option<bool>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -67,6 +94,21 @@ pub trait LLMProvider: Send + Sync {
     async fn chat(&self, messages: &[ChatMessage], model: &str) -> anyhow::Result<LLMResponse>;
     async fn embed(&self, text: &str) -> anyhow::Result<Vec<f32>>;
     fn get_default_model(&self) -> &str;
+
+    /// Chat with tool support
+    async fn chat_with_tools(
+        &self,
+        messages: &[ChatMessage],
+        model: &str,
+        tools: Option<Vec<nanors_tools::ToolDefinition>>,
+    ) -> anyhow::Result<LLMToolResponse>;
+}
+
+#[derive(Debug, Clone)]
+pub struct LLMToolResponse {
+    pub content: Vec<ContentBlock>,
+    pub stop_reason: Option<String>,
+    pub usage: Option<Usage>,
 }
 
 #[async_trait]

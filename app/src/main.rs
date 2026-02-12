@@ -48,6 +48,14 @@ enum Commands {
         /// Model to use
         #[arg(short = 'M', long)]
         model: Option<String>,
+
+        /// Working directory for tools
+        #[arg(short = 'd', long)]
+        working_dir: Option<String>,
+
+        /// Enable tool calling (bash, read_file, write_file, edit_file, glob, grep)
+        #[arg(short = 't', long)]
+        enable_tools: bool,
     },
     /// Multi-turn conversation with persistent session
     Chat {
@@ -103,8 +111,20 @@ async fn main() -> anyhow::Result<()> {
     // Each strategy is a zero-sized type (ZST) with no runtime overhead.
     // The compiler will monomorphize each call, enabling full optimization.
     match cli.command {
-        Commands::Agent { message, model } => {
-            AgentStrategy.execute(AgentInput { message, model }).await?;
+        Commands::Agent {
+            message,
+            model,
+            working_dir,
+            enable_tools,
+        } => {
+            AgentStrategy
+                .execute(AgentInput {
+                    message,
+                    model,
+                    working_dir,
+                    enable_tools,
+                })
+                .await?;
         }
         Commands::Chat {
             session,

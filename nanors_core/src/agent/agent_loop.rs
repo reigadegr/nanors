@@ -7,8 +7,8 @@ use tracing::{debug, info};
 use uuid::Uuid;
 
 use crate::{
-    ChatMessage, DEFAULT_SYSTEM_PROMPT, LLMProvider, MemoryItem, MemoryItemRepo, Role,
-    SessionStorage,
+    ChatMessage, ContentBlock, DEFAULT_SYSTEM_PROMPT, LLMProvider, MemoryItem, MemoryItemRepo,
+    MessageContent, Role, SessionStorage,
 };
 
 use crate::retrieval::adaptive::{AdaptiveConfig, find_adaptive_cutoff};
@@ -62,6 +62,8 @@ where
     running: Arc<AtomicBool>,
     memory_manager: Option<Arc<dyn MemoryItemRepo>>,
     retrieval_config: RetrievalConfig,
+    tools: Option<nanors_tools::ToolRegistry>,
+    max_tool_iterations: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -94,7 +96,23 @@ where
             running: Arc::new(AtomicBool::new(true)),
             memory_manager: None,
             retrieval_config: RetrievalConfig::default(),
+            tools: None,
+            max_tool_iterations: 10,
         }
+    }
+
+    /// Set the tools registry for tool calling.
+    #[must_use]
+    pub fn with_tools(mut self, tools: nanors_tools::ToolRegistry) -> Self {
+        self.tools = Some(tools);
+        self
+    }
+
+    /// Set the maximum number of tool iterations.
+    #[must_use]
+    pub const fn with_max_tool_iterations(mut self, max: usize) -> Self {
+        self.max_tool_iterations = max;
+        self
     }
 
     /// Set the memory manager for persistent memory storage.
@@ -147,36 +165,153 @@ where
     ) -> anyhow::Result<String> {
         info!("Processing message from session: {}", session_id);
 
+        // Check if tools are available
+        if self.tools.is_some() {
+            return self.process_message_with_tools(session_id, content).await;
+        }
+
         let system_prompt = self.build_system_prompt(content).await;
 
         let messages = vec![
             ChatMessage {
                 role: Role::System,
-                content: system_prompt,
+                content: MessageContent::Text(system_prompt),
             },
             ChatMessage {
                 role: Role::User,
-                content: content.to_string(),
+                content: MessageContent::Text(content.to_string()),
             },
         ];
 
         // Log messages being sent to the LLM
         for (i, msg) in messages.iter().enumerate() {
+            let content_len = match &msg.content {
+                MessageContent::Text(text) => text.len(),
+                MessageContent::Blocks(blocks) => blocks.len(),
+            };
             info!(
                 "Message {}: role={:?}, content_len={}",
-                i,
-                msg.role,
-                msg.content.len()
+                i, msg.role, content_len
             );
         }
 
         let response = self.provider.chat(&messages, &self.config.model).await?;
 
         self.save_to_session(session_id, content, &response).await?;
-        self.save_to_memory_with_embeddings(content, &response)
+        self.save_to_memory_with_embeddings(content, &response.content)
             .await;
 
         Ok(response.content)
+    }
+
+    /// Process message with tool calling support.
+    async fn process_message_with_tools(
+        &self,
+        session_id: &Uuid,
+        content: &str,
+    ) -> anyhow::Result<String> {
+        let system_prompt = self.build_system_prompt(content).await;
+        let Some(tools) = self.tools.as_ref() else {
+            anyhow::bail!("Tool calling requested but no tools available")
+        };
+        let tool_definitions = tools.definitions();
+
+        // Build conversation
+        let mut messages = vec![
+            ChatMessage {
+                role: Role::System,
+                content: MessageContent::Text(system_prompt),
+            },
+            ChatMessage {
+                role: Role::User,
+                content: MessageContent::Text(content.to_string()),
+            },
+        ];
+
+        // Tool calling loop
+        for iteration in 0..self.max_tool_iterations {
+            info!("Tool iteration {}", iteration + 1);
+
+            let tool_defs = if tool_definitions.is_empty() {
+                None
+            } else {
+                Some(tool_definitions.clone())
+            };
+
+            let response = self
+                .provider
+                .chat_with_tools(&messages, &self.config.model, tool_defs)
+                .await?;
+
+            // Check stop reason
+            match response.stop_reason.as_deref() {
+                Some("end_turn" | "stop") | None => {
+                    // Extract text content from response
+                    let text_content: Vec<String> = response
+                        .content
+                        .iter()
+                        .filter_map(|block| match block {
+                            ContentBlock::Text { text } => Some(text.clone()),
+                            _ => None,
+                        })
+                        .collect();
+
+                    let final_text = text_content.join("\n");
+
+                    // Save to session and memory
+                    self.save_to_session_with_blocks(session_id, content, &response.content)
+                        .await?;
+                    self.save_to_memory_with_embeddings(content, &final_text)
+                        .await;
+
+                    return Ok(final_text);
+                }
+                Some("tool_use" | "tool_calls") => {
+                    // Process tool calls
+                    let mut tool_results = Vec::new();
+
+                    for block in &response.content {
+                        if let ContentBlock::ToolUse { id, name, input } = block {
+                            info!("Tool call: {} with id {}", name, id);
+
+                            let result = tools.execute(name, input.clone()).await;
+
+                            let tool_result_block = ContentBlock::ToolResult {
+                                tool_use_id: id.clone(),
+                                content: result.content.clone(),
+                                is_error: Some(result.is_error),
+                            };
+                            tool_results.push(tool_result_block);
+                        }
+                    }
+
+                    // Add assistant message with tool calls
+                    messages.push(ChatMessage {
+                        role: Role::Assistant,
+                        content: MessageContent::Blocks(response.content),
+                    });
+
+                    // Add tool results - Zhipu API requires Role::Tool with tool_call_id
+                    // Each tool result should be a separate message
+                    if !tool_results.is_empty() {
+                        for result_block in tool_results {
+                            messages.push(ChatMessage {
+                                role: Role::Tool,
+                                content: MessageContent::Blocks(vec![result_block]),
+                            });
+                        }
+                    }
+                }
+                Some(other) => {
+                    return Err(anyhow::anyhow!("Unexpected stop reason: {other}"));
+                }
+            }
+        }
+
+        Err(anyhow::anyhow!(
+            "Max tool iterations ({}) reached",
+            self.max_tool_iterations
+        ))
     }
 
     /// Build the system prompt with memory retrieval.
@@ -288,8 +423,34 @@ where
         Ok(())
     }
 
+    /// Save messages with blocks to session storage.
+    async fn save_to_session_with_blocks(
+        &self,
+        session_id: &Uuid,
+        content: &str,
+        response_blocks: &[ContentBlock],
+    ) -> anyhow::Result<()> {
+        self.session_manager
+            .add_message(session_id, Role::User, content)
+            .await?;
+
+        // Extract text from blocks for storage
+        let response_text: Vec<String> = response_blocks
+            .iter()
+            .filter_map(|block| match block {
+                ContentBlock::Text { text } => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+
+        self.session_manager
+            .add_message(session_id, Role::Assistant, &response_text.join("\n"))
+            .await?;
+        Ok(())
+    }
+
     /// Save interaction to memory storage with embeddings.
-    async fn save_to_memory_with_embeddings(&self, content: &str, _response: &crate::LLMResponse) {
+    async fn save_to_memory_with_embeddings(&self, content: &str, _response_text: &str) {
         let Some(memory) = &self.memory_manager else {
             return;
         };

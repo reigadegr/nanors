@@ -7,7 +7,7 @@ echo "Auto-fixing clippy warnings..."
 export RUSTFLAGS="-Z function-sections=yes -C link-arg=-fuse-ld=mold -C link-args=-Wl,--gc-sections,--as-needed"
 
 # 运行 clippy --fix 自动修复警告
-cargo clippy --fix --allow-dirty
+cargo clippy --fix --allow-dirty --allow-staged --all
 
 echo ""
 echo "✅ Auto-fix completed!"

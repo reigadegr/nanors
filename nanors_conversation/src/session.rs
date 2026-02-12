@@ -6,7 +6,7 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use nanors_core::{ChatMessage, Role};
+use nanors_core::{ChatMessage, MessageContent, Role};
 
 /// A conversation session with full message history.
 ///
@@ -49,7 +49,10 @@ impl ConversationSession {
 
     /// Add a message to the session.
     pub fn add_message(&mut self, role: Role, content: String) {
-        self.messages.push(ChatMessage { role, content });
+        self.messages.push(ChatMessage {
+            role,
+            content: MessageContent::Text(content),
+        });
         self.updated_at = Utc::now();
     }
 
@@ -112,11 +115,17 @@ mod tests {
 
         let last = session.last_n_messages(1);
         assert_eq!(last.len(), 1);
-        assert_eq!(last[0].content, "Hi there!");
+        assert_eq!(
+            last[0].content,
+            MessageContent::Text("Hi there!".to_string())
+        );
 
         let user_msgs = session.user_messages();
         assert_eq!(user_msgs.len(), 1);
-        assert_eq!(user_msgs[0].content, "Hello");
+        assert_eq!(
+            user_msgs[0].content,
+            MessageContent::Text("Hello".to_string())
+        );
     }
 
     #[test]

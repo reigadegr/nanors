@@ -112,6 +112,7 @@ dependencies = [
  "nanors_memory",
  "nanors_providers",
  "nanors_telegram",
+ "nanors_tools",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -1034,6 +1035,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "glob"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
+
+[[package]]
 name = "h2"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1667,6 +1674,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "nanors_tools",
  "regex",
  "serde",
  "serde_json",
@@ -1712,6 +1720,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "nanors_core",
+ "nanors_tools",
  "reqwest 0.13.2",
  "serde",
  "serde_json",
@@ -1734,6 +1743,21 @@ dependencies = [
  "serde",
  "teloxide",
  "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "nanors_tools"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "glob",
+ "regex",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "uuid",

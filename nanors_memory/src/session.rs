@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use nanors_core::{ChatMessage, Role, Session, SessionStorage};
+use nanors_core::{ChatMessage, MessageContent, Role, Session, SessionStorage};
 use sea_orm::{ActiveModelTrait, EntityTrait, Set};
 use uuid::Uuid;
 
@@ -38,7 +38,7 @@ impl SessionStorage for MemoryManager {
             let mut messages: Vec<ChatMessage> = serde_json::from_str(&model.messages)?;
             messages.push(ChatMessage {
                 role,
-                content: content.to_string(),
+                content: MessageContent::Text(content.to_string()),
             });
             let messages_json = serde_json::to_string(&messages)?;
 
@@ -53,7 +53,7 @@ impl SessionStorage for MemoryManager {
         } else {
             let messages = vec![ChatMessage {
                 role,
-                content: content.to_string(),
+                content: MessageContent::Text(content.to_string()),
             }];
             let messages_json = serde_json::to_string(&messages)?;
 

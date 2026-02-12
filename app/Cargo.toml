@@ -14,6 +14,7 @@ nanors_config.workspace = true
 nanors_memory.workspace = true
 nanors_conversation.workspace = true
 nanors_telegram.workspace = true
+nanors_tools.workspace = true
 
 clap.workspace = true
 tokio.workspace = true

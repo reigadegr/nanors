@@ -4,7 +4,7 @@
 //! persistent conversations with context across turns.
 
 use crate::session::ConversationSession;
-use nanors_core::{ChatMessage, LLMProvider, Role, SessionStorage};
+use nanors_core::{ChatMessage, LLMProvider, MessageContent, Role, SessionStorage};
 use std::io::Write;
 use std::sync::Arc;
 use thiserror::Error;
@@ -220,12 +220,12 @@ where
         let mut messages = Vec::new();
         messages.push(ChatMessage {
             role: Role::System,
-            content: system_prompt,
+            content: MessageContent::Text(system_prompt),
         });
         messages.extend(history);
         messages.push(ChatMessage {
             role: Role::User,
-            content: context.user_input.clone(),
+            content: MessageContent::Text(context.user_input.clone()),
         });
 
         // Send to LLM
@@ -349,8 +349,16 @@ where
     /// Save current session to storage.
     async fn save_session(&self) -> Result<(), ConversationError> {
         for msg in &self.current_session.messages {
+            let content_str = match &msg.content {
+                MessageContent::Text(text) => text.clone(),
+                MessageContent::Blocks(_) => {
+                    // For blocks, serialize to JSON for storage
+                    serde_json::to_string(&msg.content)
+                        .map_err(|e| ConversationError::SessionError(e.to_string()))?
+                }
+            };
             self.storage
-                .add_message(&self.config.session_id, msg.role.clone(), &msg.content)
+                .add_message(&self.config.session_id, msg.role.clone(), &content_str)
                 .await
                 .map_err(|e| ConversationError::SessionError(e.to_string()))?;
         }
