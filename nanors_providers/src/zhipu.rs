@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use nanors_core::{ChatMessage, LLMProvider, LLMResponse};
 use reqwest::Client;
 use serde_json::json;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::retry::retry_with_backoff;
 
@@ -38,10 +38,28 @@ impl ZhipuProvider {
             .bearer_auth(&self.api_key)
             .json(request)
             .send()
-            .await?
-            .error_for_status()?
-            .json::<serde_json::Value>()
             .await?;
+
+        let status = response.status();
+
+        // Check for HTTP error status before consuming response
+        if !status.is_success() {
+            // Try to extract error response body for debugging
+            let error_response = response.json::<serde_json::Value>().await.ok();
+
+            if let Some(error_body) = error_response {
+                warn!(
+                    "HTTP error {status}: {}",
+                    serde_json::to_string_pretty(&error_body)
+                        .unwrap_or_else(|_| "Unable to format".to_string())
+                );
+            } else {
+                warn!("HTTP error {status}");
+            }
+            return Err(anyhow::anyhow!("HTTP error: {status}"));
+        }
+
+        let response = response.json::<serde_json::Value>().await?;
 
         let content = response["choices"][0]["message"]["content"]
             .as_str()
@@ -94,10 +112,27 @@ impl LLMProvider for ZhipuProvider {
                 "input": text,
             }))
             .send()
-            .await?
-            .error_for_status()?
-            .json::<serde_json::Value>()
             .await?;
+
+        let status = response.status();
+
+        // Check for HTTP error status before consuming response
+        if !status.is_success() {
+            let error_response = response.json::<serde_json::Value>().await.ok();
+
+            if let Some(error_body) = error_response {
+                warn!(
+                    "HTTP error {status}: {}",
+                    serde_json::to_string_pretty(&error_body)
+                        .unwrap_or_else(|_| "Unable to format".to_string())
+                );
+            } else {
+                warn!("HTTP error {status}");
+            }
+            return Err(anyhow::anyhow!("HTTP error: {status}"));
+        }
+
+        let response = response.json::<serde_json::Value>().await?;
 
         let embedding = response["data"][0]["embedding"]
             .as_array()

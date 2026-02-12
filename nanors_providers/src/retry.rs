@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::warn;
@@ -19,6 +20,7 @@ pub async fn retry_with_backoff<F, Fut, T, E>(
 where
     F: FnMut() -> Fut,
     Fut: std::future::Future<Output = Result<T, E>>,
+    E: Display,
 {
     let mut last_error = None;
 
@@ -27,17 +29,17 @@ where
         match operation().await {
             Ok(result) => return Ok(result),
             Err(e) => {
-                last_error = Some(e);
                 let attempt = i + 1;
                 if attempt < base_delays.len() + final_retries {
                     warn!(
-                        "Request failed (attempt {}/{}), retrying after {}s...",
+                        "Request failed (attempt {}/{}): {e}. Retrying after {}s...",
                         attempt,
                         base_delays.len() + final_retries,
                         delay_secs
                     );
                     sleep(Duration::from_secs(*delay_secs)).await;
                 }
+                last_error = Some(e);
             }
         }
     }
@@ -47,16 +49,16 @@ where
         match operation().await {
             Ok(result) => return Ok(result),
             Err(e) => {
-                last_error = Some(e);
                 let attempt = base_delays.len() + i + 1;
                 if i < final_retries - 1 {
                     warn!(
-                        "Request failed (attempt {}/{}), retrying after 10s...",
+                        "Request failed (attempt {}/{}): {e}. Retrying after 10s...",
                         attempt,
                         base_delays.len() + final_retries
                     );
                     sleep(Duration::from_secs(10)).await;
                 }
+                last_error = Some(e);
             }
         }
     }
@@ -79,7 +81,7 @@ mod tests {
                 let attempts = attempts.clone();
                 async move {
                     attempts.fetch_add(1, Ordering::SeqCst);
-                    Ok::<(), ()>(())
+                    Ok::<(), String>(())
                 }
             },
             &[1, 2],
@@ -93,12 +95,16 @@ mod tests {
     #[tokio::test]
     async fn retry_succeeds_after_failures() {
         let attempts = Arc::new(AtomicUsize::new(0));
-        let result = retry_with_backoff(
+        let result: std::result::Result<(), String> = retry_with_backoff(
             || {
                 let attempts = attempts.clone();
                 async move {
                     let count = attempts.fetch_add(1, Ordering::SeqCst) + 1;
-                    if count < 3 { Err::<(), ()>(()) } else { Ok(()) }
+                    if count < 3 {
+                        Err(String::from("fail"))
+                    } else {
+                        Ok(())
+                    }
                 }
             },
             &[1, 2],
@@ -112,12 +118,12 @@ mod tests {
     #[tokio::test]
     async fn retry_fails_after_all_attempts() {
         let attempts = Arc::new(AtomicUsize::new(0));
-        let result = retry_with_backoff(
+        let result: std::result::Result<(), String> = retry_with_backoff(
             || {
                 let attempts = attempts.clone();
                 async move {
                     attempts.fetch_add(1, Ordering::SeqCst);
-                    Err::<(), ()>(())
+                    Err(String::from("fail"))
                 }
             },
             &[1, 2],
