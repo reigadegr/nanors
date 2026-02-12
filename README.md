@@ -51,10 +51,10 @@ nanors/
 
 ## 配置和数据文件
 
-所有配置和数据文件统一放在 `~/nanors` 目录：
+所有配置和数据文件统一放在 `~/.nanors` 目录：
 
 ```
-~/nanors/
+~/.nanors/
 ├── config.json          # 配置文件（必需，init 时创建）
 └── sessions.db         # 数据库文件（自动创建）
 ```
@@ -99,12 +99,12 @@ sea-orm = { version = "2.0.0-rc.30", features = [
 nanors init
 ```
 
-这将直接创建 `~/nanors/config.json` 配置文件。
+这将直接创建 `~/.nanors/config.json` 配置文件。
 
 ### 2. 编辑配置
 
 ```bash
-# 编辑 ~/nanors/config.json，填入你的智谱 API Key
+# 编辑 ~/.nanors/config.json，填入你的智谱 API Key
 ```
 
 配置文件格式：
@@ -306,7 +306,7 @@ nanors telegram -a "123456789,987654321"
 
 1. 在 Telegram 中找到 [@BotFather](https://t.me/BotFather)
 2. 发送 `/newbot` 创建新机器人，获取 Token
-3. 编辑 `~/nanors/config.json`，设置 `telegram.enabled = true` 并填入 Token
+3. 编辑 `~/.nanors/config.json`，设置 `telegram.enabled = true` 并填入 Token
 4. 运行 `nanors telegram` 启动机器人
 5. 在 Telegram 中找到你的机器人，开始对话
 
@@ -390,7 +390,7 @@ export RUSTFLAGS="-Z function-sections=yes -C link-arg=-fuse-ld=/usr/bin/mold -C
 - ✅ Workspace 架构（6 个 crate）
 - ✅ 完整的 clippy 检查（pedantic、nursery 等）
 - ✅ 生产级技术栈（与 pmi-rust-backend 一致）
-- ✅ 所有配置和数据统一在 `~/nanors` 目录
+- ✅ 所有配置和数据统一在 `~/.nanors` 目录
 
 ## 第二阶段功能（新增）
 
@@ -453,7 +453,7 @@ export RUSTFLAGS="-Z function-sections=yes -C link-arg=-fuse-ld=/usr/bin/mold -C
 ## 文件结构
 
 ```
-~/nanors/
+~/.nanors/
 ├── config.json          # 配置文件（必需）
 └── sessions.db         # 数据库文件（自动创建）
 ```

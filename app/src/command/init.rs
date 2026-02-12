@@ -2,7 +2,7 @@ use nanors_config::Config;
 
 /// Strategy for initializing the configuration.
 ///
-/// This strategy creates the default configuration file at `~/nanors/config.json`.
+/// This strategy creates the default configuration file at `~/.nanors/config.json`.
 ///
 /// # Design
 /// - Zero-allocation: No heap allocation

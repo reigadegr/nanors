@@ -1639,6 +1639,7 @@ dependencies = [
  "nanors_core",
  "serde",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]

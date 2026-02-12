@@ -38,7 +38,6 @@ impl super::CommandStrategy for AgentStrategy {
 
     async fn execute(&self, input: Self::Input) -> anyhow::Result<()> {
         let config = Config::load()?;
-        info!("Loaded config from ~/nanors/config.json");
 
         let provider = ZhipuProvider::new(config.providers.zhipu.api_key.clone());
 

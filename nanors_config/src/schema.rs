@@ -4,6 +4,12 @@ use std::path::PathBuf;
 // Import RetrievalConfig from nanors_core to avoid duplication
 use nanors_core::agent::RetrievalConfig;
 
+/// Configuration directory name (relative to home directory)
+const CONFIG_DIR_NAME: &str = ".nanors";
+
+/// Configuration file name
+const CONFIG_FILE_NAME: &str = "config.json";
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Config {
     pub agents: AgentsConfig,
@@ -90,12 +96,28 @@ pub struct ProviderConfig {
 }
 
 impl Config {
-    pub fn load() -> anyhow::Result<Self> {
-        let config_dir = dirs::home_dir()
+    /// Returns the configuration directory path.
+    fn config_dir() -> anyhow::Result<PathBuf> {
+        Ok(dirs::home_dir()
             .ok_or_else(|| anyhow::anyhow!("Cannot find home directory"))?
-            .join(".nanors");
+            .join(CONFIG_DIR_NAME))
+    }
 
-        let config_path = config_dir.join("config.json");
+    /// Returns the configuration file path.
+    pub fn config_path() -> anyhow::Result<PathBuf> {
+        Ok(Self::config_dir()?.join(CONFIG_FILE_NAME))
+    }
+
+    /// Returns the configuration directory path, creating it if necessary.
+    pub fn ensure_config_dir() -> anyhow::Result<PathBuf> {
+        let config_dir = Self::config_dir()?;
+        std::fs::create_dir_all(&config_dir)?;
+        Ok(config_dir)
+    }
+
+    /// Loads the configuration from the config file.
+    pub fn load() -> anyhow::Result<Self> {
+        let config_path = Self::config_path()?;
 
         if !config_path.exists() {
             anyhow::bail!(
@@ -107,21 +129,15 @@ impl Config {
         let content = std::fs::read_to_string(&config_path)?;
         let config: Self = serde_json::from_str(&content)?;
 
+        tracing::info!("Loaded config from {}", config_path.display());
+
         Ok(config)
     }
 
-    pub fn ensure_config_dir() -> anyhow::Result<PathBuf> {
-        let config_dir = dirs::home_dir()
-            .ok_or_else(|| anyhow::anyhow!("Cannot find home directory"))?
-            .join(".nanors");
-
-        std::fs::create_dir_all(&config_dir)?;
-        Ok(config_dir)
-    }
-
+    /// Creates a new configuration file with default values.
     pub fn create_config() -> anyhow::Result<()> {
-        let config_dir = Self::ensure_config_dir()?;
-        let config_path = config_dir.join("config.json");
+        Self::ensure_config_dir()?;
+        let config_path = Self::config_path()?;
 
         // 检查是否已存在
         if config_path.exists() {
