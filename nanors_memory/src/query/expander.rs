@@ -1,7 +1,6 @@
 //! Query expansion for improved retrieval recall.
 //!
 //! This module provides configurable query expansion strategies including:
-//! - OR queries for broader lexical matching
 //! - Stopword filtering to remove noise words
 //! - Singular/plural and variant expansion
 
@@ -12,12 +11,10 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 #[repr(u8)]
 pub enum ExpansionType {
-    /// Disjunctive OR query: "term1 OR term2 OR term3"
-    OrQuery = 0,
     /// Stopword removal: remove question words and particles
-    Stopwords = 1,
+    Stopwords = 0,
     /// Variant expansion: singular/plural, synonyms
-    Variants = 2,
+    Variants = 1,
 }
 
 impl ExpansionType {
@@ -25,7 +22,6 @@ impl ExpansionType {
     #[must_use]
     pub const fn as_str(&self) -> &str {
         match self {
-            Self::OrQuery => "or_query",
             Self::Stopwords => "stopwords",
             Self::Variants => "variants",
         }
@@ -42,18 +38,10 @@ pub struct QueryExpanderConfig {
     /// Whether expansion is enabled.
     #[serde(default = "default_expansion_enabled")]
     pub enabled: bool,
-
-    /// Minimum tokens to apply OR query expansion.
-    #[serde(default = "default_min_tokens")]
-    pub min_or_tokens: usize,
 }
 
 const fn default_expansion_enabled() -> bool {
     true
-}
-
-const fn default_min_tokens() -> usize {
-    2
 }
 
 impl Default for QueryExpanderConfig {
@@ -61,7 +49,6 @@ impl Default for QueryExpanderConfig {
         Self {
             stopwords: default_stopwords(),
             enabled: true,
-            min_or_tokens: 2,
         }
     }
 }
@@ -127,7 +114,6 @@ pub fn default_stopwords() -> Vec<String> {
 pub struct QueryExpander {
     stopwords: Vec<String>,
     enabled: bool,
-    min_or_tokens: usize,
 }
 
 impl QueryExpander {
@@ -137,7 +123,6 @@ impl QueryExpander {
         Self {
             stopwords: config.stopwords,
             enabled: config.enabled,
-            min_or_tokens: config.min_or_tokens,
         }
     }
 
@@ -156,15 +141,7 @@ impl QueryExpander {
 
         let mut results = Vec::new();
 
-        // Strategy 1: OR query for broader lexical matching
-        if let Some(or_query) = self.expand_or(query) {
-            results.push(ExpandedQuery {
-                query: or_query,
-                expansion_type: ExpansionType::OrQuery,
-            });
-        }
-
-        // Strategy 2: Remove stopwords
+        // Remove stopwords
         if let Some(filtered) = self.remove_stopwords(query) {
             results.push(ExpandedQuery {
                 query: filtered,
@@ -173,24 +150,6 @@ impl QueryExpander {
         }
 
         results
-    }
-
-    /// Generate an OR query from tokens.
-    ///
-    /// Example: "我是什么用户" -> "我 OR 用户"
-    #[must_use]
-    pub fn expand_or(&self, query: &str) -> Option<String> {
-        let tokens = Self::tokenize(query);
-        let content_tokens: Vec<String> = tokens
-            .into_iter()
-            .filter(|t| !self.is_stopword(t))
-            .collect();
-
-        if content_tokens.len() >= self.min_or_tokens {
-            Some(content_tokens.join(" OR "))
-        } else {
-            None
-        }
     }
 
     /// Remove stopwords from query.
@@ -346,39 +305,8 @@ mod tests {
 
     #[test]
     fn test_expansion_type() {
-        assert_eq!(ExpansionType::OrQuery.as_str(), "or_query");
-    }
-
-    #[test]
-    #[expect(clippy::expect_used, reason = "Test failure should panic with context")]
-    fn test_expand_or_chinese() {
-        let config = QueryExpanderConfig {
-            stopwords: default_stopwords(),
-            enabled: true,
-            min_or_tokens: 1,
-        };
-        let expander = QueryExpander::new(config);
-        // Test with English text instead due to character-based CJK tokenization
-        let result = expander.expand_or("what is user type");
-
-        assert!(result.is_some());
-        let expanded = result.expect("expansion should succeed");
-        assert!(expanded.contains("OR"));
-        assert!(expanded.contains("user"));
-        assert!(!expanded.contains("what"));
-    }
-
-    #[test]
-    #[expect(clippy::expect_used, reason = "Test failure should panic with context")]
-    fn test_expand_or_english() {
-        let expander = QueryExpander::with_defaults();
-        let result = expander.expand_or("what is my user type");
-
-        assert!(result.is_some());
-        let expanded = result.expect("OR expansion should succeed");
-        assert!(expanded.contains("OR"));
-        assert!(!expanded.contains("what"));
-        assert!(!expanded.contains("is"));
+        assert_eq!(ExpansionType::Stopwords.as_str(), "stopwords");
+        assert_eq!(ExpansionType::Variants.as_str(), "variants");
     }
 
     #[test]
@@ -387,7 +315,6 @@ mod tests {
         let config = QueryExpanderConfig {
             stopwords: default_stopwords(),
             enabled: true,
-            min_or_tokens: 1,
         };
         let expander = QueryExpander::new(config);
         let result = expander.remove_stopwords("what is my user type");
@@ -404,15 +331,8 @@ mod tests {
         let expander = QueryExpander::with_defaults();
         let results = expander.expand("what is my user type");
 
-        // Should return multiple expanded versions
+        // Should return expanded versions
         assert!(!results.is_empty());
-
-        // Check that OR query is present
-        assert!(
-            results
-                .iter()
-                .any(|r| r.expansion_type == ExpansionType::OrQuery)
-        );
 
         // Check that stopword removal is present
         assert!(
@@ -427,7 +347,6 @@ mod tests {
         let config = QueryExpanderConfig {
             stopwords: default_stopwords(),
             enabled: false,
-            min_or_tokens: 2,
         };
         let expander = QueryExpander::new(config);
 
@@ -467,7 +386,7 @@ mod tests {
             serde_json::from_str(&json).expect("valid JSON should deserialize");
 
         assert_eq!(deserialized.enabled, config.enabled);
-        assert_eq!(deserialized.min_or_tokens, config.min_or_tokens);
+        assert_eq!(deserialized.stopwords, config.stopwords);
     }
 
     #[test]

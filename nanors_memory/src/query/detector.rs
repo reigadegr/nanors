@@ -173,7 +173,7 @@ pub fn default_patterns() -> Vec<QuestionPattern> {
         // Recency patterns
         QuestionPattern::new(
             QuestionType::Recency,
-            r"(?i)(现在|目前|最新|当前|最近|right now|at the moment|up to date)",
+            r"(?i)(现在|目前|最新|当前|最近|current|latest|right now|at the moment|up to date)",
         )
         .with_priority(80),
         // HowMany patterns

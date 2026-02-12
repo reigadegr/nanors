@@ -33,4 +33,10 @@ mod session;
 pub use nanors_core::SessionStorage;
 
 pub use dedup::content_hash;
+pub use extraction::cards::{CardKind, MemoryCard, Polarity, VersionRelation};
+pub use extraction::engine::{DatabaseCardRepository, ExtractionConfig, ExtractionEngine};
+pub use extraction::patterns::default_patterns;
 pub use manager::MemoryManager;
+pub use query::detector::{QuestionPattern, QuestionType, QuestionTypeDetector};
+pub use query::expander::{ExpansionType, QueryExpander, QueryExpanderConfig};
+pub use schema::{Cardinality, SchemaError, SchemaRegistry, ValueType};

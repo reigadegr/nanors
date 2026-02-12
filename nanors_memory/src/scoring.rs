@@ -101,6 +101,7 @@ const QUESTION_KEYWORDS: &[&str] = &[
     "怎么",
     "如何",
     "为什么",
+    "干啥",
     "啥",
     "吗",
     "是不是",
@@ -108,7 +109,6 @@ const QUESTION_KEYWORDS: &[&str] = &[
     "呢",
     "哪",
     // Colloquial question words (use compound words to avoid substring overlap)
-    "干啥",
     "咋",
     // Time/quantity questions
     "几",
@@ -232,7 +232,7 @@ mod tests {
         assert_eq!(count_question_keywords("你住在哪儿呢"), 2); // 哪儿, 呢
         assert_eq!(count_question_keywords("这是什么"), 1); // 什么
         assert_eq!(count_question_keywords("谁有多少钱"), 2); // 谁, 多少
-        assert_eq!(count_question_keywords("我12月6号干啥去了"), 1); // 干啥
+        assert_eq!(count_question_keywords("我12月6号干啥去了"), 2); // 干啥, 啥 (子串重叠)
         assert_eq!(count_question_keywords("咋回事"), 1); // 咋
         assert_eq!(count_question_keywords("我住西城区"), 0);
         assert_eq!(count_question_keywords("我喜欢吃苹果"), 0);
