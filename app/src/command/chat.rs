@@ -5,6 +5,7 @@
 
 use nanors_config::Config;
 use nanors_conversation::{ConversationConfig, ConversationManager, TurnContext};
+use nanors_core::DEFAULT_SYSTEM_PROMPT_WITH_MEMORY;
 use nanors_memory::MemoryManager;
 use nanors_providers::ZhipuProvider;
 use std::sync::Arc;
@@ -57,12 +58,15 @@ impl super::CommandStrategy for ChatStrategy {
             model: input
                 .model
                 .unwrap_or_else(|| config.agents.defaults.model.clone()),
-            system_prompt: config.agents.defaults.system_prompt.clone().unwrap_or_else(||
-                "You are a helpful AI assistant with memory of past conversations. Provide clear, concise responses.".to_string()
-            ),
-            history_limit: input.history_limit.unwrap_or_else(|| {
-                config.agents.defaults.history_limit.unwrap_or(20)
-            }),
+            system_prompt: config
+                .agents
+                .defaults
+                .system_prompt
+                .clone()
+                .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT_WITH_MEMORY.to_string()),
+            history_limit: input
+                .history_limit
+                .unwrap_or_else(|| config.agents.defaults.history_limit.unwrap_or(20)),
             temperature: config.agents.defaults.temperature,
             max_tokens: config.agents.defaults.max_tokens,
         };

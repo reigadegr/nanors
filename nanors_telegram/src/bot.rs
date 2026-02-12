@@ -21,7 +21,8 @@ use crate::{Error, Result};
 use nanors_config::Config;
 use nanors_conversation::{ConversationConfig, ConversationManager, TurnContext};
 use nanors_core::{
-    AgentConfig, AgentLoop, LLMProvider, MemoryItem, MemoryItemRepo, MemoryType, SessionStorage,
+    AgentConfig, AgentLoop, DEFAULT_SYSTEM_PROMPT, LLMProvider, MemoryItem, MemoryItemRepo,
+    MemoryType, SessionStorage,
 };
 use nanors_memory::MemoryManager;
 use nanors_providers::ZhipuProvider;
@@ -119,7 +120,7 @@ impl TelegramBot {
             .defaults
             .system_prompt
             .clone()
-            .unwrap_or_else(|| "You are a helpful AI assistant.".to_string());
+            .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string());
         let history_limit = self.config.agents.defaults.history_limit.unwrap_or(20);
 
         let conversation_config = ConversationConfig {

@@ -7,7 +7,8 @@ use tracing::{debug, info};
 use uuid::Uuid;
 
 use crate::{
-    ChatMessage, LLMProvider, MemoryItem, MemoryItemRepo, MemoryType, Role, SessionStorage,
+    ChatMessage, DEFAULT_SYSTEM_PROMPT, LLMProvider, MemoryItem, MemoryItemRepo, MemoryType, Role,
+    SessionStorage,
 };
 
 use crate::retrieval::adaptive::{AdaptiveConfig, find_adaptive_cutoff};
@@ -181,14 +182,14 @@ where
     /// Build the system prompt with memory retrieval.
     pub async fn build_system_prompt(&self, query: &str) -> String {
         let Some(memory_manager) = &self.memory_manager else {
-            return "You are a helpful AI assistant.".to_string();
+            return DEFAULT_SYSTEM_PROMPT.to_string();
         };
 
         let query_embedding = match self.provider.embed(query).await {
             Ok(embedding) => embedding,
             Err(e) => {
                 info!("Failed to generate query embedding: {e}, falling back to default");
-                return "You are a helpful AI assistant.".to_string();
+                return DEFAULT_SYSTEM_PROMPT.to_string();
             }
         };
 
@@ -200,11 +201,11 @@ where
             .search_enhanced(&query_embedding, query, fetch_count)
             .await
         else {
-            return "You are a helpful AI assistant.".to_string();
+            return DEFAULT_SYSTEM_PROMPT.to_string();
         };
 
         if items.is_empty() {
-            return "You are a helpful AI assistant.".to_string();
+            return DEFAULT_SYSTEM_PROMPT.to_string();
         }
 
         // Apply adaptive retrieval cutoff

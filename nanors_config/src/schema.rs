@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 // Import RetrievalConfig from nanors_core to avoid duplication
+use nanors_core::DEFAULT_SYSTEM_PROMPT_WITH_MEMORY;
 use nanors_core::agent::RetrievalConfig;
 
 /// Configuration directory name (relative to home directory)
@@ -81,10 +82,7 @@ impl Default for AgentDefaults {
             model: "glm-4.7-flash".to_string(),
             max_tokens: 8192,
             temperature: 0.7,
-            system_prompt: Some(
-                "You are a helpful AI assistant with memory of past conversations. Provide clear, concise responses."
-                    .to_string(),
-            ),
+            system_prompt: Some(DEFAULT_SYSTEM_PROMPT_WITH_MEMORY.to_string()),
             history_limit: Some(20),
         }
     }

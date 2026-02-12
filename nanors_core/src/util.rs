@@ -2,6 +2,12 @@
 
 use sha2::{Digest, Sha256};
 
+/// Default system prompt for agents with memory support.
+pub const DEFAULT_SYSTEM_PROMPT_WITH_MEMORY: &str = "You are a helpful AI assistant with memory of past conversations. Provide clear, concise responses.";
+
+/// Default system prompt for agents without memory.
+pub const DEFAULT_SYSTEM_PROMPT: &str = "You are a helpful AI assistant.";
+
 /// Compute a SHA-256 content hash for deduplication.
 ///
 /// Mirrors memU's `compute_content_hash`: concatenates memory type and

@@ -32,7 +32,7 @@ mod util;
 
 pub use agent::{AgentConfig, AgentLoop};
 pub use memory::{MemoryItem, MemoryItemRepo, MemoryType, SalienceScore};
-pub use util::content_hash;
+pub use util::{DEFAULT_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT_WITH_MEMORY, content_hash};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
