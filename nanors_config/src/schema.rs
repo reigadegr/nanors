@@ -10,9 +10,11 @@ const CONFIG_DIR_NAME: &str = ".nanors";
 /// Configuration file name
 const CONFIG_FILE_NAME: &str = "config.json";
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
 pub struct Config {
+    #[serde(default)]
     pub agents: AgentsConfig,
+    #[serde(default)]
     pub providers: ProvidersConfig,
     #[serde(default)]
     pub database: DatabaseConfig,
@@ -56,8 +58,9 @@ pub struct TelegramConfig {
     pub allow_from: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
 pub struct AgentsConfig {
+    #[serde(default)]
     pub defaults: AgentDefaults,
 }
 
@@ -72,14 +75,38 @@ pub struct AgentDefaults {
     pub history_limit: Option<usize>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+impl Default for AgentDefaults {
+    fn default() -> Self {
+        Self {
+            model: "glm-4-flash".to_string(),
+            max_tokens: 8192,
+            temperature: 0.7,
+            system_prompt: Some(
+                "You are a helpful AI assistant with memory of past conversations. Provide clear, concise responses."
+                    .to_string(),
+            ),
+            history_limit: Some(20),
+        }
+    }
+}
+
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
 pub struct ProvidersConfig {
+    #[serde(default)]
     pub zhipu: ProviderConfig,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ProviderConfig {
     pub api_key: String,
+}
+
+impl Default for ProviderConfig {
+    fn default() -> Self {
+        Self {
+            api_key: "your-zhipu-api-key-here".to_string(),
+        }
+    }
 }
 
 impl Config {
@@ -126,7 +153,6 @@ impl Config {
         Self::ensure_config_dir()?;
         let config_path = Self::config_path()?;
 
-        // 检查是否已存在
         if config_path.exists() {
             anyhow::bail!(
                 "Config file already exists at: {}. Please edit it directly.",
@@ -134,42 +160,10 @@ impl Config {
             );
         }
 
-        // 使用模板生成配置文件
-        let config_template = r#"{
-  "agents": {
-    "defaults": {
-      "model": "glm-4-flash",
-      "max_tokens": 8192,
-      "temperature": 0.7,
-      "system_prompt": "You are a helpful AI assistant with memory of past conversations. Provide clear, concise responses.",
-      "history_limit": 20
-    }
-  },
-  "providers": {
-    "zhipu": {
-      "api_key": "your-zhipu-api-key-here"
-    }
-  },
-  "database": {
-    "url": "postgresql://reigadegr:1234@localhost:5432/nanors"
-  },
-  "memory": {
-    "retrieval": {
-      "items_top_k": 10,
-      "context_target_length": 2000,
-      "adaptive": {
-        "min_results": 5,
-        "max_results": 100000
-      }
-    }
-  },
-  "telegram": {
-    "token": "your-telegram-bot-token-here",
-    "allow_from": []
-  }
-}"#;
+        let config = Self::default();
+        let config_json = serde_json::to_string_pretty(&config)?;
 
-        std::fs::write(&config_path, config_template)?;
+        std::fs::write(&config_path, config_json)?;
 
         println!("✅ Created config file at: {}", config_path.display());
         println!();
@@ -183,5 +177,136 @@ impl Config {
         println!("   - history_limit: Number of messages to keep in context (for chat command)");
         println!();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config_serializes_correctly() {
+        let config = Config::default();
+
+        // 验证 agents 配置
+        assert_eq!(config.agents.defaults.model, "glm-4-flash");
+        assert_eq!(config.agents.defaults.max_tokens, 8192);
+        // 浮点数使用近似比较
+        assert!((config.agents.defaults.temperature - 0.7).abs() < f32::EPSILON);
+        assert_eq!(
+            config.agents.defaults.system_prompt,
+            Some("You are a helpful AI assistant with memory of past conversations. Provide clear, concise responses.".to_string())
+        );
+        assert_eq!(config.agents.defaults.history_limit, Some(20));
+
+        // 验证 providers 配置
+        assert_eq!(config.providers.zhipu.api_key, "your-zhipu-api-key-here");
+
+        // 验证 database 配置
+        assert_eq!(
+            config.database.url,
+            "postgresql://reigadegr:1234@localhost:5432/nanors"
+        );
+
+        // 验证 telegram 配置
+        assert_eq!(config.telegram.token, "");
+        assert!(config.telegram.allow_from.is_empty());
+    }
+
+    #[test]
+    fn test_config_serialization_roundtrip() {
+        let original = Config::default();
+
+        // 序列化为 JSON
+        let json = serde_json::to_string_pretty(&original).expect("Failed to serialize config");
+
+        // 反序列化回 Config
+        let deserialized: Config =
+            serde_json::from_str(&json).expect("Failed to deserialize config");
+
+        // 验证所有字段一致
+        assert_eq!(
+            original.agents.defaults.model,
+            deserialized.agents.defaults.model
+        );
+        assert_eq!(
+            original.agents.defaults.max_tokens,
+            deserialized.agents.defaults.max_tokens
+        );
+        // 浮点数使用近似比较
+        assert!(
+            (original.agents.defaults.temperature - deserialized.agents.defaults.temperature).abs()
+                < f32::EPSILON
+        );
+        assert_eq!(
+            original.agents.defaults.system_prompt,
+            deserialized.agents.defaults.system_prompt
+        );
+        assert_eq!(
+            original.agents.defaults.history_limit,
+            deserialized.agents.defaults.history_limit
+        );
+        assert_eq!(
+            original.providers.zhipu.api_key,
+            deserialized.providers.zhipu.api_key
+        );
+        assert_eq!(original.database.url, deserialized.database.url);
+        assert_eq!(original.telegram.token, deserialized.telegram.token);
+        assert_eq!(
+            original.telegram.allow_from,
+            deserialized.telegram.allow_from
+        );
+    }
+
+    #[test]
+    fn test_config_json_is_valid() {
+        let config = Config::default();
+        let json = serde_json::to_string_pretty(&config).expect("Failed to serialize config");
+
+        // 验证 JSON 格式正确（可以再次解析）
+        let _: Config = serde_json::from_str(&json).expect("Generated JSON is invalid");
+
+        // 验证 JSON 包含预期的键
+        assert!(json.contains("\"agents\""));
+        assert!(json.contains("\"providers\""));
+        assert!(json.contains("\"database\""));
+        assert!(json.contains("\"memory\""));
+        assert!(json.contains("\"telegram\""));
+        assert!(json.contains("\"glm-4-flash\""));
+        assert!(json.contains("\"your-zhipu-api-key-here\""));
+    }
+
+    #[test]
+    fn test_default_impl_for_all_configs() {
+        // 验证所有配置结构体都有正确的 Default 实现
+        let agent_defaults = AgentDefaults::default();
+        assert_eq!(agent_defaults.model, "glm-4-flash");
+        assert_eq!(agent_defaults.max_tokens, 8192);
+
+        let agents = AgentsConfig::default();
+        assert_eq!(agents.defaults.model, "glm-4-flash");
+
+        let provider = ProviderConfig::default();
+        assert_eq!(provider.api_key, "your-zhipu-api-key-here");
+
+        let providers = ProvidersConfig::default();
+        assert_eq!(providers.zhipu.api_key, "your-zhipu-api-key-here");
+
+        let database = DatabaseConfig::default();
+        assert_eq!(
+            database.url,
+            "postgresql://reigadegr:1234@localhost:5432/nanors"
+        );
+
+        let telegram = TelegramConfig::default();
+        assert_eq!(telegram.token, "");
+        assert!(telegram.allow_from.is_empty());
+
+        let memory = MemoryConfig::default();
+        // RetrievalConfig 有自己的默认值
+        assert_eq!(memory.retrieval.items_top_k, 5);
+
+        let config = Config::default();
+        assert_eq!(config.agents.defaults.model, "glm-4-flash");
     }
 }
