@@ -58,10 +58,7 @@ impl super::CommandStrategy for InfoStrategy {
         println!();
 
         println!("Memory:");
-        println!(
-            "  Enabled: {}",
-            if config.memory.enabled { "Yes" } else { "No" }
-        );
+        println!("  Enabled: Yes");
 
         Ok(())
     }

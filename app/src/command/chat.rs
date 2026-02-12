@@ -77,9 +77,7 @@ impl super::CommandStrategy for ChatStrategy {
             ConversationManager::new(provider, memory_manager.clone(), conversation_config).await?;
 
         // Note: memory integration will be added later
-        if config.memory.enabled {
-            info!("Memory feature enabled - integrating with conversation");
-        }
+        info!("Memory feature enabled - integrating with conversation");
 
         if let Some(msg) = input.message {
             // Single message mode

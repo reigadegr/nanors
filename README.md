@@ -129,20 +129,17 @@ nanors init
     "url": "postgresql://reigadegr:1234@localhost:5432/nanors"
   },
   "memory": {
-    "enabled": true,
     "default_user_scope": "default",
     "retrieval": {
       "items_top_k": 10,
       "context_target_length": 2000,
       "adaptive": {
-        "enabled": true,
-        "min_items": 5,
-        "max_items": 50
+        "min_results": 5,
+        "max_results": 100000
       }
     }
   },
   "telegram": {
-    "enabled": false,
     "token": "your-telegram-bot-token-here",
     "allow_from": []
   }
@@ -158,7 +155,6 @@ nanors init
 | `agents.defaults.temperature` | 温度参数 | `0.7` |
 | `agents.defaults.history_limit` | 多轮对话历史条数 | `20` |
 | `database.url` | 数据库连接 URL | PostgreSQL 格式 |
-| `memory.enabled` | 是否启用长期记忆 | `true` |
 
 ### Telegram Bot 配置
 
@@ -306,7 +302,7 @@ nanors telegram -a "123456789,987654321"
 
 1. 在 Telegram 中找到 [@BotFather](https://t.me/BotFather)
 2. 发送 `/newbot` 创建新机器人，获取 Token
-3. 编辑 `~/.nanors/config.json`，设置 `telegram.enabled = true` 并填入 Token
+3. 编辑 `~/.nanors/config.json`，填入 Token
 4. 运行 `nanors telegram` 启动机器人
 5. 在 Telegram 中找到你的机器人，开始对话
 

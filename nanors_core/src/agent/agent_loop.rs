@@ -193,12 +193,8 @@ where
             }
         };
 
-        // Fetch more items if adaptive retrieval is enabled
-        let fetch_count = if self.retrieval_config.adaptive.enabled {
-            self.retrieval_config.adaptive.max_results
-        } else {
-            self.retrieval_config.items_top_k
-        };
+        // Fetch more items for adaptive retrieval
+        let fetch_count = self.retrieval_config.adaptive.max_results;
 
         // Try to use enhanced search if available, fall back to standard search
         let Ok(mut items) = memory_manager
@@ -212,14 +208,10 @@ where
             return "You are a helpful AI assistant.".to_string();
         }
 
-        // Apply adaptive retrieval cutoff if enabled
-        let effective_count = if self.retrieval_config.adaptive.enabled {
-            let scores: Vec<f64> = items.iter().map(|s| s.score).collect();
-            let cutoff = find_adaptive_cutoff(&scores, &self.retrieval_config.adaptive);
-            cutoff.min(self.retrieval_config.items_top_k)
-        } else {
-            self.retrieval_config.items_top_k
-        };
+        // Apply adaptive retrieval cutoff
+        let scores: Vec<f64> = items.iter().map(|s| s.score).collect();
+        let cutoff = find_adaptive_cutoff(&scores, &self.retrieval_config.adaptive);
+        let effective_count = cutoff.min(self.retrieval_config.items_top_k);
 
         info!(
             "Adaptive retrieval: using {} of {} items",

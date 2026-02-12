@@ -13,7 +13,6 @@
 //!
 //! // Configure adaptive retrieval
 //! let config = AdaptiveConfig {
-//!     enabled: true,
 //!     max_results: 100,
 //!     strategy: CutoffStrategy::RelativeThreshold { min_ratio: 0.5 },
 //!     ..Default::default()
@@ -37,10 +36,6 @@ use serde::{Deserialize, Serialize};
 /// Configuration for adaptive retrieval.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdaptiveConfig {
-    /// Enable adaptive retrieval (if false, uses fixed `top_k`).
-    #[serde(default = "default_enabled")]
-    pub enabled: bool,
-
     /// Maximum results to consider (over-retrieval limit).
     /// Set high enough to capture all potentially relevant results.
     #[serde(default = "default_max_results")]
@@ -59,9 +54,6 @@ pub struct AdaptiveConfig {
     pub normalize_scores: bool,
 }
 
-const fn default_enabled() -> bool {
-    true
-}
 const fn default_max_results() -> usize {
     100_000
 }
@@ -75,7 +67,6 @@ const fn default_normalize() -> bool {
 impl Default for AdaptiveConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
             max_results: 100_000,
             min_results: 5,
             strategy: CutoffStrategy::default(),

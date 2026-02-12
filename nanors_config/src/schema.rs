@@ -42,10 +42,8 @@ impl DatabaseConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
 pub struct MemoryConfig {
-    #[serde(default)]
-    pub enabled: bool,
     #[serde(default)]
     pub retrieval: RetrievalConfig,
 }
@@ -53,20 +51,9 @@ pub struct MemoryConfig {
 #[derive(Debug, Default, Deserialize, Serialize, Clone)]
 pub struct TelegramConfig {
     #[serde(default)]
-    pub enabled: bool,
-    #[serde(default)]
     pub token: String,
     #[serde(default)]
     pub allow_from: Vec<String>,
-}
-
-impl Default for MemoryConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            retrieval: RetrievalConfig::default(),
-        }
-    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -167,19 +154,16 @@ impl Config {
     "url": "postgresql://reigadegr:1234@localhost:5432/nanors"
   },
   "memory": {
-    "enabled": true,
     "retrieval": {
       "items_top_k": 10,
       "context_target_length": 2000,
       "adaptive": {
-        "enabled": true,
-        "min_items": 5,
-        "max_items": 50
+        "min_results": 5,
+        "max_results": 100000
       }
     }
   },
   "telegram": {
-    "enabled": true,
     "token": "your-telegram-bot-token-here",
     "allow_from": []
   }
@@ -197,7 +181,6 @@ impl Config {
         println!("🔧 Configuration options:");
         println!("   - model: AI model to use (glm-4-flash, glm-4-plus, glm-4-0520, etc.)");
         println!("   - history_limit: Number of messages to keep in context (for chat command)");
-        println!("   - memory.enabled: Enable long-term memory features");
         println!();
         Ok(())
     }

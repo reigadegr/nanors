@@ -78,10 +78,6 @@ impl CommandStrategy for TelegramStrategy {
     async fn execute(&self, input: Self::Input) -> anyhow::Result<()> {
         let config = Config::load()?;
 
-        if !config.telegram.enabled {
-            anyhow::bail!("Telegram is not enabled in config. Set \"telegram.enabled\": true");
-        }
-
         // Get token from input or config
         let token = if let Some(t) = input.token {
             t

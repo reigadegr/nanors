@@ -55,12 +55,7 @@ impl super::CommandStrategy for AgentStrategy {
         // Create agent with MemoryManager as both session and memory storage
         let agent = AgentLoop::new(provider, memory_manager.clone(), agent_config);
 
-        let agent = if config.memory.enabled {
-            super::setup_memory_storage(&config, agent, memory_manager)
-        } else {
-            info!("Memory feature disabled (session storage still available)");
-            agent
-        };
+        let agent = super::setup_memory_storage(&config, agent, memory_manager);
 
         match input.message {
             Some(msg) => {
