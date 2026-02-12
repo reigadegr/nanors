@@ -22,7 +22,7 @@ use nanors_config::Config;
 use nanors_conversation::{ConversationConfig, ConversationManager, TurnContext};
 use nanors_core::{
     AgentConfig, AgentLoop, DEFAULT_SYSTEM_PROMPT, LLMProvider, MemoryItem, MemoryItemRepo,
-    MemoryType, SessionStorage,
+    SessionStorage,
 };
 use nanors_memory::MemoryManager;
 use nanors_providers::ZhipuProvider;
@@ -214,18 +214,7 @@ impl TelegramBot {
             }
         };
 
-        let user_memory = MemoryItem {
-            id: Uuid::now_v7(),
-            memory_type: MemoryType::Episodic,
-            summary: format!("User: {text}"),
-            embedding: user_embedding,
-            happened_at: now,
-            extra: None,
-            content_hash: nanors_core::content_hash("episodic", &text),
-            reinforcement_count: 0,
-            created_at: now,
-            updated_at: now,
-        };
+        let user_memory = MemoryItem::create_episodic(&text, user_embedding, now);
 
         // Use semantic upsert to handle fact updates (e.g., location changes)
         match self

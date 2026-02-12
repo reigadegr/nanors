@@ -47,6 +47,29 @@ pub struct MemoryItem {
     pub updated_at: DateTime<Utc>,
 }
 
+impl MemoryItem {
+    /// Create a new episodic memory item for user input.
+    #[must_use]
+    pub fn create_episodic(
+        content: &str,
+        embedding: Option<Vec<f32>>,
+        happened_at: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            id: Uuid::now_v7(),
+            memory_type: MemoryType::Episodic,
+            summary: format!("User: {content}"),
+            embedding,
+            happened_at,
+            extra: None,
+            content_hash: crate::content_hash("episodic", content),
+            reinforcement_count: 0,
+            created_at: happened_at,
+            updated_at: happened_at,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SalienceScore<T> {
     pub item: T,

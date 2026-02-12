@@ -7,7 +7,7 @@ use tracing::{debug, info};
 use uuid::Uuid;
 
 use crate::{
-    ChatMessage, DEFAULT_SYSTEM_PROMPT, LLMProvider, MemoryItem, MemoryItemRepo, MemoryType, Role,
+    ChatMessage, DEFAULT_SYSTEM_PROMPT, LLMProvider, MemoryItem, MemoryItemRepo, Role,
     SessionStorage,
 };
 
@@ -307,18 +307,7 @@ where
             }
         };
 
-        let user_memory = MemoryItem {
-            id: Uuid::now_v7(),
-            memory_type: MemoryType::Episodic,
-            summary: format!("User: {content}"),
-            embedding: user_embedding,
-            happened_at: now,
-            extra: None,
-            content_hash: crate::content_hash("episodic", content),
-            reinforcement_count: 0,
-            created_at: now,
-            updated_at: now,
-        };
+        let user_memory = MemoryItem::create_episodic(content, user_embedding, now);
 
         // Use semantic upsert to handle fact updates (e.g., location changes)
         match memory.semantic_upsert(&user_memory, 0.85).await {
