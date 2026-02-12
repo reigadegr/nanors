@@ -1740,6 +1740,7 @@ dependencies = [
  "nanors_core",
  "nanors_memory",
  "nanors_providers",
+ "nanors_tools",
  "serde",
  "teloxide",
  "thiserror 2.0.18",

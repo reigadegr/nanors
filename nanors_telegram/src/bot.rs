@@ -1,48 +1,21 @@
 use crate::{Error, Result};
 use nanors_config::Config;
-use nanors_conversation::{ConversationConfig, ConversationManager, TurnContext};
-use nanors_core::{
-    AgentConfig, AgentLoop, DEFAULT_SYSTEM_PROMPT, LLMProvider, MemoryItem, MemoryItemRepo,
-    SessionStorage,
-};
+use nanors_core::{AgentConfig, AgentLoop, SessionStorage};
 use nanors_memory::MemoryManager;
 use nanors_providers::ZhipuProvider;
+use nanors_tools::{
+    BashTool, EditFileTool, GlobTool, GrepTool, ReadFileTool, ToolRegistry, WriteFileTool,
+};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use teloxide::prelude::*;
 use tokio::time::sleep;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 /// Session data for each chat
 #[derive(Clone)]
 struct SessionData {
     session_id: Uuid,
-    manager: Arc<tokio::sync::Mutex<ConversationManager<ZhipuProvider, Arc<MemoryManager>>>>,
-}
-
-/// Build `ConversationConfig` from bot config with parameters.
-fn build_conversation_config(
-    config: &Config,
-    session_id: Uuid,
-    session_name: Option<String>,
-) -> ConversationConfig {
-    let system_prompt = config
-        .agents
-        .defaults
-        .system_prompt
-        .clone()
-        .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string());
-    let history_limit = config.agents.defaults.history_limit.unwrap_or(20);
-
-    ConversationConfig {
-        session_id,
-        session_name,
-        system_prompt,
-        model: config.agents.defaults.model.clone(),
-        temperature: config.agents.defaults.temperature,
-        max_tokens: config.agents.defaults.max_tokens,
-        history_limit,
-    }
 }
 
 /// Build `AgentConfig` from bot config.
@@ -68,6 +41,8 @@ pub struct TelegramBot {
     sessions: Arc<tokio::sync::Mutex<HashMap<i64, SessionData>>>,
     /// Allowed chat IDs
     allowed_chats: Vec<i64>,
+    /// Working directory for tools
+    working_dir: String,
 }
 
 impl TelegramBot {
@@ -78,6 +53,7 @@ impl TelegramBot {
         memory_manager: Arc<MemoryManager>,
         config: Config,
         allowed_chats: &[String],
+        working_dir: String,
     ) -> Result<Self> {
         // Parse allowed chat IDs
         let allowed_chats = allowed_chats
@@ -94,6 +70,7 @@ impl TelegramBot {
             config,
             sessions: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             allowed_chats,
+            working_dir,
         })
     }
 
@@ -103,8 +80,8 @@ impl TelegramBot {
         self.allowed_chats.is_empty() || self.allowed_chats.contains(&chat_id)
     }
 
-    /// Get or create a session manager for a chat
-    async fn get_or_create_session_manager(&self, chat_id: i64) -> Result<SessionData> {
+    /// Get or create a session ID for a chat
+    async fn get_or_create_session_id(&self, chat_id: i64) -> Result<Uuid> {
         // Check authorization
         if !self.is_allowed(chat_id) {
             return Err(Error::Unauthorized(chat_id));
@@ -114,7 +91,7 @@ impl TelegramBot {
         {
             let sessions = self.sessions.lock().await;
             if let Some(data) = sessions.get(&chat_id) {
-                return Ok(data.clone());
+                return Ok(data.session_id);
             }
         }
 
@@ -128,30 +105,14 @@ impl TelegramBot {
             .await
             .map_err(|e| Error::Memory(anyhow::anyhow!("Failed to create session: {e}")))?;
 
-        // Create conversation config
-        let conversation_config =
-            build_conversation_config(&self.config, session_id, Some(format!("TG:{chat_id}")));
-
-        // Create conversation manager
-        let manager = ConversationManager::new(
-            self.provider.clone(),
-            self.memory_manager.clone(),
-            conversation_config,
-        )
-        .await
-        .map_err(|e| Error::Config(e.to_string()))?;
-
-        let data = SessionData {
-            session_id,
-            manager: Arc::new(tokio::sync::Mutex::new(manager)),
-        };
+        let data = SessionData { session_id };
 
         {
             let mut sessions = self.sessions.lock().await;
             sessions.insert(chat_id, data.clone());
         }
 
-        Ok(data)
+        Ok(session_id)
     }
 
     /// Reset session for a chat
@@ -173,60 +134,36 @@ impl TelegramBot {
 
     /// Process a message and get response
     pub async fn process_message(&self, chat_id: i64, text: String) -> Result<String> {
-        let session_data = self.get_or_create_session_manager(chat_id).await?;
-        let mut manager = session_data.manager.lock().await;
+        let session_id = self.get_or_create_session_id(chat_id).await?;
 
-        // Step 1: Use AgentLoop to retrieve memory and build system prompt
+        // Build agent config
         let agent_config = build_agent_config(&self.config);
 
+        // Register tools
+        let mut tool_registry = ToolRegistry::new();
+        tool_registry.add_tool(Box::new(BashTool::new(&self.working_dir)));
+        tool_registry.add_tool(Box::new(ReadFileTool::new(&self.working_dir)));
+        tool_registry.add_tool(Box::new(WriteFileTool::new(&self.working_dir)));
+        tool_registry.add_tool(Box::new(EditFileTool::new(&self.working_dir)));
+        tool_registry.add_tool(Box::new(GlobTool::new(&self.working_dir)));
+        tool_registry.add_tool(Box::new(GrepTool::new(&self.working_dir)));
+
+        // Use AgentLoop with tool support
         let agent_loop = AgentLoop::new(
             self.provider.clone(),
             self.memory_manager.clone(),
             agent_config,
         )
-        .with_memory(self.memory_manager.clone());
+        .with_memory(self.memory_manager.clone())
+        .with_tools(tool_registry);
 
-        // Retrieve memory and build system prompt
-        let memory_context = agent_loop.build_system_prompt(&text).await;
-
-        // Step 2: Pass retrieved context to ConversationManager
-        let mut context = TurnContext::new(text.clone());
-        context.retrieved_context = Some(memory_context);
-
-        // Step 3: Process turn with memory-enhanced context
-        let result = manager
-            .process_turn(context)
+        // Process message with tool calling support
+        let response = agent_loop
+            .process_message(&session_id, &text)
             .await
             .map_err(|e| Error::Provider(anyhow::anyhow!("{e}")))?;
 
-        // Step 4: Save user message to long-term memory
-        let now = chrono::Utc::now();
-        let user_embedding = match self.provider.embed(&text).await {
-            Ok(embedding) => Some(embedding),
-            Err(e) => {
-                debug!("Failed to generate user embedding: {e}");
-                None
-            }
-        };
-
-        let user_memory = MemoryItem::create_episodic(&text, user_embedding, now);
-
-        // Use semantic upsert to handle fact updates (e.g., location changes)
-        match self
-            .memory_manager
-            .semantic_upsert(&user_memory, 0.85)
-            .await
-        {
-            Ok(id) => {
-                debug!("Stored user memory: {}", id);
-            }
-            Err(e) => {
-                debug!("Failed to store user memory: {e}");
-            }
-        }
-
-        drop(manager);
-        Ok(result.response)
+        Ok(response)
     }
 
     /// Test connection to Telegram API with exponential backoff retry.
@@ -312,6 +249,7 @@ impl Clone for TelegramBot {
             config: self.config.clone(),
             sessions: Arc::clone(&self.sessions),
             allowed_chats: self.allowed_chats.clone(),
+            working_dir: self.working_dir.clone(),
         }
     }
 }
