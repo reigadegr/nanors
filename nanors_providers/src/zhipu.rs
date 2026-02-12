@@ -30,21 +30,13 @@ impl ZhipuProvider {
         }
     }
 
-    /// Helper method to send a single request
-    async fn try_send(&self, request: &serde_json::Value) -> anyhow::Result<LLMResponse> {
-        let response = self
-            .client
-            .post(format!("{}/chat/completions", self.base_url))
-            .bearer_auth(&self.api_key)
-            .json(request)
-            .send()
-            .await?;
-
+    /// Handle HTTP response with proper error logging
+    async fn handle_http_response(
+        response: reqwest::Response,
+    ) -> anyhow::Result<serde_json::Value> {
         let status = response.status();
 
-        // Check for HTTP error status before consuming response
         if !status.is_success() {
-            // Try to extract error response body for debugging
             let error_response = response.json::<serde_json::Value>().await.ok();
 
             if let Some(error_body) = error_response {
@@ -59,7 +51,23 @@ impl ZhipuProvider {
             return Err(anyhow::anyhow!("HTTP error: {status}"));
         }
 
-        let response = response.json::<serde_json::Value>().await?;
+        response
+            .json::<serde_json::Value>()
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Helper method to send a single request
+    async fn try_send(&self, request: &serde_json::Value) -> anyhow::Result<LLMResponse> {
+        let response = self
+            .client
+            .post(format!("{}/chat/completions", self.base_url))
+            .bearer_auth(&self.api_key)
+            .json(request)
+            .send()
+            .await?;
+
+        let response = Self::handle_http_response(response).await?;
 
         let content = response["choices"][0]["message"]["content"]
             .as_str()
@@ -114,25 +122,7 @@ impl LLMProvider for ZhipuProvider {
             .send()
             .await?;
 
-        let status = response.status();
-
-        // Check for HTTP error status before consuming response
-        if !status.is_success() {
-            let error_response = response.json::<serde_json::Value>().await.ok();
-
-            if let Some(error_body) = error_response {
-                warn!(
-                    "HTTP error {status}: {}",
-                    serde_json::to_string_pretty(&error_body)
-                        .unwrap_or_else(|_| "Unable to format".to_string())
-                );
-            } else {
-                warn!("HTTP error {status}");
-            }
-            return Err(anyhow::anyhow!("HTTP error: {status}"));
-        }
-
-        let response = response.json::<serde_json::Value>().await?;
+        let response = Self::handle_http_response(response).await?;
 
         let embedding = response["data"][0]["embedding"]
             .as_array()
