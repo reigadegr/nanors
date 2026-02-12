@@ -59,7 +59,7 @@ impl ZhipuProvider {
             .map_err(Into::into)
     }
 
-    /// Convert ChatMessage to Zhipu API format
+    /// Convert `ChatMessage` to Zhipu API format
     fn convert_message_to_zhipu(msg: &ChatMessage) -> serde_json::Value {
         // Handle Role::Tool with ToolResult - Zhipu API requires separate format
         if msg.role == Role::Tool {
@@ -110,13 +110,10 @@ impl ZhipuProvider {
                                 }
                             }));
                         }
-                        ContentBlock::Text { .. } => {
-                            // Skip empty text blocks
-                        }
-                        ContentBlock::ToolResult { .. } => {
-                            // ToolResult should only appear in Role::Tool messages,
-                            // which are handled above. Skip here.
-                            continue;
+                        ContentBlock::Text { .. } | ContentBlock::ToolResult { .. } => {
+                            // Skip empty text blocks and ToolResult blocks
+                            // (ToolResult should only appear in Role::Tool messages,
+                            // which are handled above)
                         }
                     }
                 }
@@ -143,7 +140,7 @@ impl ZhipuProvider {
         }
     }
 
-    /// Convert ToolDefinition to Zhipu API format
+    /// Convert `ToolDefinition` to Zhipu API format
     fn convert_tool_to_zhipu(tool: &nanors_tools::ToolDefinition) -> serde_json::Value {
         json!({
             "type": "function",
@@ -225,7 +222,7 @@ impl ZhipuProvider {
     }
 }
 
-fn role_to_zhipu(role: &Role) -> &str {
+const fn role_to_zhipu(role: &Role) -> &str {
     match role {
         Role::User => "user",
         Role::Assistant => "assistant",
@@ -239,7 +236,7 @@ impl LLMProvider for ZhipuProvider {
     async fn chat(&self, messages: &[ChatMessage], model: &str) -> anyhow::Result<LLMResponse> {
         let zhipu_messages: Vec<serde_json::Value> = messages
             .iter()
-            .map(ZhipuProvider::convert_message_to_zhipu)
+            .map(Self::convert_message_to_zhipu)
             .collect();
 
         let request = json!({
@@ -302,7 +299,7 @@ impl LLMProvider for ZhipuProvider {
     ) -> anyhow::Result<LLMToolResponse> {
         let zhipu_messages: Vec<serde_json::Value> = messages
             .iter()
-            .map(ZhipuProvider::convert_message_to_zhipu)
+            .map(Self::convert_message_to_zhipu)
             .collect();
 
         let mut request = json!({
@@ -311,13 +308,11 @@ impl LLMProvider for ZhipuProvider {
         });
 
         // Add tools if provided
-        let tool_count = tools.as_ref().map_or(0, |t| t.len());
+        let tool_count = tools.as_ref().map_or(0, std::vec::Vec::len);
         if let Some(tools) = tools {
             if !tools.is_empty() {
-                let zhipu_tools: Vec<serde_json::Value> = tools
-                    .iter()
-                    .map(ZhipuProvider::convert_tool_to_zhipu)
-                    .collect();
+                let zhipu_tools: Vec<serde_json::Value> =
+                    tools.iter().map(Self::convert_tool_to_zhipu).collect();
                 request["tools"] = json!(zhipu_tools);
             }
         }

@@ -53,7 +53,7 @@ enum Commands {
         #[arg(short = 'd', long)]
         working_dir: Option<String>,
 
-        /// Enable tool calling (bash, read_file, write_file, edit_file, glob, grep)
+        /// Enable tool calling (bash, `read_file`, `write_file`, `edit_file`, glob, grep)
         #[arg(short = 't', long)]
         enable_tools: bool,
     },
