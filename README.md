@@ -168,7 +168,7 @@ nanors init
 
 #### 单轮对话（无状态）
 
-交互式对话：
+交互式对话（工具调用默认开启）：
 
 ```bash
 nanors agent
@@ -184,6 +184,12 @@ nanors agent -m "你好"
 
 ```bash
 nanors agent -m "你好" --model glm-4.7
+```
+
+指定工具工作目录：
+
+```bash
+nanors agent -d /path/to/project
 ```
 
 #### 多轮对话（持久化会话）**新功能**
@@ -222,16 +228,25 @@ nanors chat --history-limit 50
 
 ### `nanors agent` - 单轮对话
 
-运行 AI 助手（无状态模式，每次对话独立）。
+运行 AI 助手（无状态模式，每次对话独立）。工具调用默认开启。
 
 **选项：**
 - `-m, --message <MESSAGE>`: 发送单次消息
 - `-M, --model <MODEL>`: 指定使用的模型
+- `-d, --working-dir <DIR>`: 指定工具工作目录（默认当前目录）
+
+**工具调用（默认开启）：**
+- `bash` - 执行 shell 命令
+- `read_file` - 读取文件
+- `write_file` - 写入文件
+- `edit_file` - 编辑文件
+- `glob` - 文件模式匹配
+- `grep` - 内容搜索
 
 **示例：**
 
 ```bash
-# 交互式对话
+# 交互式对话（工具默认开启）
 nanors agent
 
 # 单次查询
@@ -239,6 +254,9 @@ nanors agent -m "今天天气怎么样？"
 
 # 指定模型
 nanors agent -m "你好" -M glm-4.7
+
+# 指定项目目录
+nanors agent -d /path/to/project
 ```
 
 ### `nanors chat` - 多轮对话 **新功能**
@@ -279,11 +297,21 @@ nanors chat --history-limit 50
 
 ### `nanors telegram` - Telegram Bot **新功能**
 
-启动 Telegram Bot，持续监听并响应 Telegram 消息。
+启动 Telegram Bot，持续监听并响应 Telegram 消息。工具调用默认开启。
 
 **选项：**
 - `-t, --token <TOKEN>`: 覆盖配置文件中的 Bot Token
 - `-a, --allow_from <IDS>`: 允许的用户/群组 ID（逗号分隔）
+
+**工具调用（默认开启）：**
+- `bash` - 执行 shell 命令
+- `read_file` - 读取文件
+- `write_file` - 写入文件
+- `edit_file` - 编辑文件
+- `glob` - 文件模式匹配
+- `grep` - 内容搜索
+
+注意：工具使用 bot 启动时的当前目录作为工作目录。
 
 **示例：**
 
@@ -315,6 +343,7 @@ nanors telegram -a "123456789,987654321"
 - 持续运行监听消息（无需 webhook）
 - 每个用户/群组独立会话
 - 支持长期记忆检索
+- 工具调用支持（bash、文件操作等）
 - Ctrl+C 优雅退出
 
 ### `nanors init`
@@ -382,7 +411,8 @@ export RUSTFLAGS="-Z function-sections=yes -C link-arg=-fuse-ld=/usr/bin/mold -C
 - ✅ CLI 工具
 - ✅ 智谱 GLM 集成
 - ✅ SQLite 会话持久化（Sea-ORM）
-- ✅ 基础工具框架
+- ✅ 工具调用框架（默认开启）
+  - bash、read_file、write_file、edit_file、glob、grep
 - ✅ Workspace 架构（6 个 crate）
 - ✅ 完整的 clippy 检查（pedantic、nursery 等）
 - ✅ 生产级技术栈（与 pmi-rust-backend 一致）

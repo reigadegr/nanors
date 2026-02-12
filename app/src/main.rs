@@ -52,10 +52,6 @@ enum Commands {
         /// Working directory for tools
         #[arg(short = 'd', long)]
         working_dir: Option<String>,
-
-        /// Enable tool calling (bash, `read_file`, `write_file`, `edit_file`, glob, grep)
-        #[arg(short = 't', long)]
-        enable_tools: bool,
     },
     /// Multi-turn conversation with persistent session
     Chat {
@@ -115,14 +111,12 @@ async fn main() -> anyhow::Result<()> {
             message,
             model,
             working_dir,
-            enable_tools,
         } => {
             AgentStrategy
                 .execute(AgentInput {
                     message,
                     model,
                     working_dir,
-                    enable_tools,
                 })
                 .await?;
         }

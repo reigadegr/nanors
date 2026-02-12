@@ -101,8 +101,15 @@ impl CommandStrategy for TelegramStrategy {
         let memory_manager =
             Arc::new(connect_memory_manager_with_retry(&config.database.url).await?);
 
-        // Create and run bot
-        let bot = TelegramBot::new(token, provider, memory_manager, config, &allow_from)?;
+        // Create and run bot (tools use current directory)
+        let bot = TelegramBot::new(
+            token,
+            provider,
+            memory_manager,
+            config,
+            &allow_from,
+            ".".to_string(),
+        )?;
 
         info!("Telegram bot is running. Press Ctrl+C to stop.");
         bot.run().await?;

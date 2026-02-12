@@ -18,8 +18,6 @@ pub struct AgentInput {
     pub model: Option<String>,
     /// Working directory for tools
     pub working_dir: Option<String>,
-    /// Enable tool calling
-    pub enable_tools: bool,
 }
 
 /// Strategy for executing Agent command.
@@ -50,26 +48,22 @@ impl super::CommandStrategy for AgentStrategy {
 
         let agent = super::setup_memory_storage(&common.config, agent, common.memory_manager);
 
-        // Register tools if enabled
-        let agent = if input.enable_tools {
-            let working_dir = input.working_dir.unwrap_or_else(|| ".".to_string());
+        // Register tools (always enabled)
+        let working_dir = input.working_dir.unwrap_or_else(|| ".".to_string());
 
-            let mut registry = ToolRegistry::new();
+        let mut registry = ToolRegistry::new();
 
-            // Register core tools
-            registry.add_tool(Box::new(BashTool::new(&working_dir)));
-            registry.add_tool(Box::new(ReadFileTool::new(&working_dir)));
-            registry.add_tool(Box::new(WriteFileTool::new(&working_dir)));
-            registry.add_tool(Box::new(EditFileTool::new(&working_dir)));
-            registry.add_tool(Box::new(GlobTool::new(&working_dir)));
-            registry.add_tool(Box::new(GrepTool::new(&working_dir)));
+        // Register core tools
+        registry.add_tool(Box::new(BashTool::new(&working_dir)));
+        registry.add_tool(Box::new(ReadFileTool::new(&working_dir)));
+        registry.add_tool(Box::new(WriteFileTool::new(&working_dir)));
+        registry.add_tool(Box::new(EditFileTool::new(&working_dir)));
+        registry.add_tool(Box::new(GlobTool::new(&working_dir)));
+        registry.add_tool(Box::new(GrepTool::new(&working_dir)));
 
-            eprintln!("🔧 Tool calling enabled with 6 tools");
+        eprintln!("🔧 Tool calling enabled with 6 tools");
 
-            agent.with_tools(registry)
-        } else {
-            agent
-        };
+        let agent = agent.with_tools(registry);
 
         match input.message {
             Some(msg) => {
