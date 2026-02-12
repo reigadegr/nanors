@@ -1,7 +1,5 @@
-//! Query analysis and expansion module.
+//! Query analysis module.
 //!
-//! This module provides tools for detecting question intent and expanding queries
-//! to improve retrieval recall.
+//! This module provides tools for detecting question intent.
 
 pub mod detector;
-pub mod expander;

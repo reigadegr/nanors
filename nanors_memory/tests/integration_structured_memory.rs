@@ -8,8 +8,8 @@
 use std::str::FromStr;
 
 use nanors_memory::{
-    CardKind, ExtractionConfig, ExtractionEngine, MemoryCard, Polarity, QueryExpander,
-    QueryExpanderConfig, QuestionType, QuestionTypeDetector, VersionRelation,
+    CardKind, ExtractionConfig, ExtractionEngine, MemoryCard, Polarity, QuestionType,
+    QuestionTypeDetector, VersionRelation,
 };
 
 /// Test question type detection with Chinese queries.
@@ -134,35 +134,6 @@ fn test_question_pattern_priority() {
     assert_eq!(detector.detect("test-custom"), QuestionType::WhatKind);
     // Should be first pattern (highest priority)
     assert_eq!(detector.patterns()[0].priority, 200);
-}
-
-/// Test query expander configuration.
-#[test]
-fn test_configurable_expander() {
-    let config = QueryExpanderConfig {
-        stopwords: vec!["test".to_string()],
-        enabled: true,
-    };
-
-    let _expander = QueryExpander::new(config);
-
-    // Stopword should be filtered
-    // Note: is_stopword is a private method, can't test directly
-    // This test just verifies the expander is created successfully
-}
-
-/// Test disabled expander.
-#[test]
-fn test_disabled_expander() {
-    let config = QueryExpanderConfig {
-        stopwords: vec![],
-        enabled: false,
-    };
-
-    let expander = QueryExpander::new(config);
-    let results = expander.expand("test query");
-
-    assert!(results.is_empty());
 }
 
 /// Test extraction confidence scoring.
@@ -337,14 +308,5 @@ fn test_question_type_conversion() {
     assert_eq!(
         QuestionType::from_str_lowercase("unknown"),
         QuestionType::Generic
-    );
-}
-
-/// Test expansion type conversion.
-#[test]
-fn test_expansion_type_conversion() {
-    assert_eq!(
-        nanors_memory::ExpansionType::Stopwords.as_str(),
-        "stopwords"
     );
 }
