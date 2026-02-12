@@ -109,6 +109,19 @@ impl ToolRegistry {
         Self { tools: Vec::new() }
     }
 
+    /// Create a new registry with all default tools registered.
+    #[must_use]
+    pub fn with_default_tools(working_dir: &str) -> Self {
+        let mut registry = Self::new();
+        registry.add_tool(Box::new(BashTool::new(working_dir)));
+        registry.add_tool(Box::new(ReadFileTool::new(working_dir)));
+        registry.add_tool(Box::new(WriteFileTool::new(working_dir)));
+        registry.add_tool(Box::new(EditFileTool::new(working_dir)));
+        registry.add_tool(Box::new(GlobTool::new(working_dir)));
+        registry.add_tool(Box::new(GrepTool::new(working_dir)));
+        registry
+    }
+
     pub fn add_tool(&mut self, tool: Box<dyn Tool>) {
         self.tools.push(tool);
     }
@@ -237,9 +250,9 @@ pub fn resolve_tool_working_dir(
     input: &serde_json::Value,
 ) -> PathBuf {
     let resolved = match isolation {
-        WorkingDirIsolation::Shared => base_working_dir.join("shared"),
+        WorkingDirIsolation::Shared => base_working_dir.to_path_buf(),
         WorkingDirIsolation::Chat => auth_context_from_input(input).map_or_else(
-            || base_working_dir.join("shared"),
+            || base_working_dir.to_path_buf(),
             |auth| chat_working_dir(base_working_dir, &auth.caller_channel, auth.caller_chat_id),
         ),
     };
@@ -296,6 +309,6 @@ mod tests {
             WorkingDirIsolation::Shared,
             &json!({}),
         );
-        assert_eq!(dir, PathBuf::from("/tmp/work/shared"));
+        assert_eq!(dir, PathBuf::from("/tmp/work"));
     }
 }

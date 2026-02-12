@@ -1,7 +1,5 @@
 use nanors_core::AgentLoop;
-use nanors_tools::{
-    BashTool, EditFileTool, GlobTool, GrepTool, ReadFileTool, ToolRegistry, WriteFileTool,
-};
+use nanors_tools::ToolRegistry;
 use uuid::Uuid;
 
 use super::{build_agent_config, init_common_components};
@@ -51,15 +49,7 @@ impl super::CommandStrategy for AgentStrategy {
         // Register tools (always enabled)
         let working_dir = input.working_dir.unwrap_or_else(|| ".".to_string());
 
-        let mut registry = ToolRegistry::new();
-
-        // Register core tools
-        registry.add_tool(Box::new(BashTool::new(&working_dir)));
-        registry.add_tool(Box::new(ReadFileTool::new(&working_dir)));
-        registry.add_tool(Box::new(WriteFileTool::new(&working_dir)));
-        registry.add_tool(Box::new(EditFileTool::new(&working_dir)));
-        registry.add_tool(Box::new(GlobTool::new(&working_dir)));
-        registry.add_tool(Box::new(GrepTool::new(&working_dir)));
+        let registry = ToolRegistry::with_default_tools(&working_dir);
 
         eprintln!("🔧 Tool calling enabled with 6 tools");
 

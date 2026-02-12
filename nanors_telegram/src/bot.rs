@@ -3,9 +3,7 @@ use nanors_config::Config;
 use nanors_core::{AgentConfig, AgentLoop, SessionStorage};
 use nanors_memory::MemoryManager;
 use nanors_providers::ZhipuProvider;
-use nanors_tools::{
-    BashTool, EditFileTool, GlobTool, GrepTool, ReadFileTool, ToolRegistry, WriteFileTool,
-};
+use nanors_tools::ToolRegistry;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use teloxide::prelude::*;
 use tokio::time::sleep;
@@ -139,14 +137,8 @@ impl TelegramBot {
         // Build agent config
         let agent_config = build_agent_config(&self.config);
 
-        // Register tools
-        let mut tool_registry = ToolRegistry::new();
-        tool_registry.add_tool(Box::new(BashTool::new(&self.working_dir)));
-        tool_registry.add_tool(Box::new(ReadFileTool::new(&self.working_dir)));
-        tool_registry.add_tool(Box::new(WriteFileTool::new(&self.working_dir)));
-        tool_registry.add_tool(Box::new(EditFileTool::new(&self.working_dir)));
-        tool_registry.add_tool(Box::new(GlobTool::new(&self.working_dir)));
-        tool_registry.add_tool(Box::new(GrepTool::new(&self.working_dir)));
+        // Register tools using default tool registry
+        let tool_registry = ToolRegistry::with_default_tools(&self.working_dir);
 
         // Use AgentLoop with tool support
         let agent_loop = AgentLoop::new(
