@@ -19,7 +19,5 @@
 
 pub mod prelude;
 
-pub mod enrichment_records;
-pub mod memory_cards;
 pub mod memory_items;
 pub mod sessions;
