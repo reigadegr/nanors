@@ -39,6 +39,40 @@ struct SessionData {
     manager: Arc<tokio::sync::Mutex<ConversationManager<ZhipuProvider, Arc<MemoryManager>>>>,
 }
 
+/// Build `ConversationConfig` from bot config with parameters.
+fn build_conversation_config(
+    config: &Config,
+    session_id: Uuid,
+    session_name: Option<String>,
+) -> ConversationConfig {
+    let system_prompt = config
+        .agents
+        .defaults
+        .system_prompt
+        .clone()
+        .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string());
+    let history_limit = config.agents.defaults.history_limit.unwrap_or(20);
+
+    ConversationConfig {
+        session_id,
+        session_name,
+        system_prompt,
+        model: config.agents.defaults.model.clone(),
+        temperature: config.agents.defaults.temperature,
+        max_tokens: config.agents.defaults.max_tokens,
+        history_limit,
+    }
+}
+
+/// Build `AgentConfig` from bot config.
+fn build_agent_config(config: &Config) -> AgentConfig {
+    AgentConfig {
+        model: config.agents.defaults.model.clone(),
+        max_tokens: config.agents.defaults.max_tokens,
+        temperature: config.agents.defaults.temperature,
+    }
+}
+
 /// Telegram Bot with AI integration
 pub struct TelegramBot {
     /// Teloxide bot instance
@@ -114,24 +148,8 @@ impl TelegramBot {
             .map_err(|e| Error::Memory(anyhow::anyhow!("Failed to create session: {e}")))?;
 
         // Create conversation config
-        let system_prompt = self
-            .config
-            .agents
-            .defaults
-            .system_prompt
-            .clone()
-            .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string());
-        let history_limit = self.config.agents.defaults.history_limit.unwrap_or(20);
-
-        let conversation_config = ConversationConfig {
-            session_id,
-            session_name: Some(format!("TG:{chat_id}")),
-            system_prompt,
-            model: self.config.agents.defaults.model.clone(),
-            temperature: self.config.agents.defaults.temperature,
-            max_tokens: self.config.agents.defaults.max_tokens,
-            history_limit,
-        };
+        let conversation_config =
+            build_conversation_config(&self.config, session_id, Some(format!("TG:{chat_id}")));
 
         // Create conversation manager
         let manager = ConversationManager::new(
@@ -178,11 +196,7 @@ impl TelegramBot {
         let mut manager = session_data.manager.lock().await;
 
         // Step 1: Use AgentLoop to retrieve memory and build system prompt
-        let agent_config = AgentConfig {
-            model: self.config.agents.defaults.model.clone(),
-            max_tokens: self.config.agents.defaults.max_tokens,
-            temperature: self.config.agents.defaults.temperature,
-        };
+        let agent_config = build_agent_config(&self.config);
 
         let agent_loop = AgentLoop::new(
             self.provider.clone(),

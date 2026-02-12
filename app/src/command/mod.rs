@@ -5,11 +5,77 @@
 //! with its own type, enabling compile-time optimization and zero runtime overhead.
 
 use nanors_config::Config;
-use nanors_core::AgentLoop;
+use nanors_conversation::ConversationConfig;
+use nanors_core::{
+    AgentConfig, AgentLoop, DEFAULT_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT_WITH_MEMORY,
+};
 use nanors_memory::MemoryManager;
 use nanors_providers::ZhipuProvider;
 use std::sync::Arc;
 use tracing::info;
+use uuid::Uuid;
+
+/// Common components initialized for commands.
+#[derive(Clone)]
+pub struct CommonComponents {
+    pub provider: ZhipuProvider,
+    pub memory_manager: Arc<MemoryManager>,
+    pub config: Config,
+}
+
+/// Initialize common components (provider, `memory_manager`, config).
+pub async fn init_common_components() -> anyhow::Result<CommonComponents> {
+    let config = Config::load()?;
+    let provider = ZhipuProvider::new(config.providers.zhipu.api_key.clone());
+    info!("Connecting to database");
+    let memory_manager = Arc::new(MemoryManager::new(&config.database.url).await?);
+    Ok(CommonComponents {
+        provider,
+        memory_manager,
+        config,
+    })
+}
+
+/// Build `AgentConfig` from config with optional model override.
+pub fn build_agent_config(config: &Config, model_override: Option<String>) -> AgentConfig {
+    AgentConfig {
+        model: model_override.unwrap_or_else(|| config.agents.defaults.model.clone()),
+        max_tokens: config.agents.defaults.max_tokens,
+        temperature: config.agents.defaults.temperature,
+    }
+}
+
+/// Build `ConversationConfig` from config with parameters.
+pub fn build_conversation_config(
+    config: &Config,
+    session_id: Uuid,
+    session_name: Option<String>,
+    model_override: Option<String>,
+    history_limit_override: Option<usize>,
+    use_memory_prompt: bool,
+) -> ConversationConfig {
+    let default_prompt = if use_memory_prompt {
+        DEFAULT_SYSTEM_PROMPT_WITH_MEMORY
+    } else {
+        DEFAULT_SYSTEM_PROMPT
+    };
+
+    ConversationConfig {
+        session_id,
+        session_name,
+        model: model_override.unwrap_or_else(|| config.agents.defaults.model.clone()),
+        system_prompt: config
+            .agents
+            .defaults
+            .system_prompt
+            .clone()
+            .unwrap_or_else(|| default_prompt.to_string()),
+        history_limit: history_limit_override
+            .unwrap_or_else(|| config.agents.defaults.history_limit.unwrap_or(20)),
+        temperature: config.agents.defaults.temperature,
+        max_tokens: config.agents.defaults.max_tokens,
+    }
+}
 
 mod agent;
 mod chat;

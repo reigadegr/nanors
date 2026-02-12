@@ -3,14 +3,11 @@
 //! Unlike the `agent` command which creates a new session per message,
 //! this command maintains conversation context across multiple turns.
 
-use nanors_config::Config;
-use nanors_conversation::{ConversationConfig, ConversationManager, TurnContext};
-use nanors_core::DEFAULT_SYSTEM_PROMPT_WITH_MEMORY;
-use nanors_memory::MemoryManager;
-use nanors_providers::ZhipuProvider;
-use std::sync::Arc;
+use nanors_conversation::{ConversationManager, TurnContext};
 use tracing::info;
 use uuid::Uuid;
+
+use super::{build_conversation_config, init_common_components};
 
 /// Input parameters for the Chat command strategy.
 #[derive(Debug, Clone)]
@@ -41,35 +38,20 @@ impl super::CommandStrategy for ChatStrategy {
     type Input = ChatInput;
 
     async fn execute(&self, input: Self::Input) -> anyhow::Result<()> {
-        let config = Config::load()?;
-
-        let provider = ZhipuProvider::new(config.providers.zhipu.api_key.clone());
-
-        info!("Connecting to database");
-        let memory_manager = Arc::new(MemoryManager::new(&config.database.url).await?);
+        let common = init_common_components().await?;
 
         // Use session_id from input or generate new one
         let session_id = input.session_id.unwrap_or_else(Uuid::now_v7);
         let session_name = input.session_name.clone();
 
-        let conversation_config = ConversationConfig {
+        let conversation_config = build_conversation_config(
+            &common.config,
             session_id,
-            session_name: input.session_name,
-            model: input
-                .model
-                .unwrap_or_else(|| config.agents.defaults.model.clone()),
-            system_prompt: config
-                .agents
-                .defaults
-                .system_prompt
-                .clone()
-                .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT_WITH_MEMORY.to_string()),
-            history_limit: input
-                .history_limit
-                .unwrap_or_else(|| config.agents.defaults.history_limit.unwrap_or(20)),
-            temperature: config.agents.defaults.temperature,
-            max_tokens: config.agents.defaults.max_tokens,
-        };
+            input.session_name,
+            input.model,
+            input.history_limit,
+            true, // use memory-enhanced prompt
+        );
 
         info!(
             "Starting conversation session: {} (name: {:?})",
@@ -77,8 +59,12 @@ impl super::CommandStrategy for ChatStrategy {
         );
 
         // Create conversation manager
-        let mut manager =
-            ConversationManager::new(provider, memory_manager.clone(), conversation_config).await?;
+        let mut manager = ConversationManager::new(
+            common.provider,
+            common.memory_manager.clone(),
+            conversation_config,
+        )
+        .await?;
 
         // Note: memory integration will be added later
         info!("Memory feature enabled - integrating with conversation");

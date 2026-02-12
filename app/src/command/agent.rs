@@ -1,10 +1,7 @@
-use nanors_config::Config;
-use nanors_core::{AgentConfig, AgentLoop};
-use nanors_memory::MemoryManager;
-use nanors_providers::ZhipuProvider;
-use std::sync::Arc;
-use tracing::info;
+use nanors_core::AgentLoop;
 use uuid::Uuid;
+
+use super::{build_agent_config, init_common_components};
 
 /// Input parameters for the Agent command strategy.
 ///
@@ -37,25 +34,14 @@ impl super::CommandStrategy for AgentStrategy {
     type Input = AgentInput;
 
     async fn execute(&self, input: Self::Input) -> anyhow::Result<()> {
-        let config = Config::load()?;
+        let common = init_common_components().await?;
 
-        let provider = ZhipuProvider::new(config.providers.zhipu.api_key.clone());
-
-        info!("Connecting to database");
-        let memory_manager = Arc::new(MemoryManager::new(&config.database.url).await?);
-
-        let agent_config = AgentConfig {
-            model: input
-                .model
-                .unwrap_or_else(|| config.agents.defaults.model.clone()),
-            max_tokens: config.agents.defaults.max_tokens,
-            temperature: config.agents.defaults.temperature,
-        };
+        let agent_config = build_agent_config(&common.config, input.model);
 
         // Create agent with MemoryManager as both session and memory storage
-        let agent = AgentLoop::new(provider, memory_manager.clone(), agent_config);
+        let agent = AgentLoop::new(common.provider, common.memory_manager.clone(), agent_config);
 
-        let agent = super::setup_memory_storage(&config, agent, memory_manager);
+        let agent = super::setup_memory_storage(&common.config, agent, common.memory_manager);
 
         match input.message {
             Some(msg) => {
