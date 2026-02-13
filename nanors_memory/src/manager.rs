@@ -24,25 +24,25 @@ use crate::scoring;
 /// - Semantic search with vector embeddings
 /// - Session management for conversation history
 /// - Structured memory extraction and retrieval
-pub struct MemoryManager {
+pub struct MemoryManager<R: Reranker = RuleBasedReranker> {
     /// Database connection for persistence
     pub(crate) db: DatabaseConnection,
     /// Reranker for result relevance tuning
-    pub(crate) reranker: Box<dyn Reranker>,
+    pub(crate) reranker: R,
 }
 
-impl MemoryManager {
+impl<R: Reranker> MemoryManager<R> {
     /// Create a new `MemoryManager` with default configuration.
     ///
     /// # Arguments
     /// * `database_url` - Database connection string
-    pub async fn new(database_url: &str) -> anyhow::Result<Self> {
+    pub async fn new(database_url: &str) -> anyhow::Result<MemoryManager<RuleBasedReranker>> {
         info!("Connecting to database for MemoryManager");
         let db = Database::connect(database_url).await?;
         info!("MemoryManager initialized");
-        Ok(Self {
+        Ok(MemoryManager {
             db,
-            reranker: Box::new(RuleBasedReranker::new()),
+            reranker: RuleBasedReranker::new(),
         })
     }
 
@@ -66,17 +66,14 @@ impl MemoryManager {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn with_reranker<R>(database_url: &str, reranker: R) -> anyhow::Result<Self>
-    where
-        R: Reranker + 'static,
-    {
+    pub async fn with_reranker<CR: Reranker>(
+        database_url: &str,
+        reranker: CR,
+    ) -> anyhow::Result<MemoryManager<CR>> {
         info!("Connecting to database for MemoryManager");
         let db = Database::connect(database_url).await?;
         info!("MemoryManager initialized with custom reranker");
-        Ok(Self {
-            db,
-            reranker: Box::new(reranker),
-        })
+        Ok(MemoryManager { db, reranker })
     }
 
     /// Clear a session by ID.
@@ -220,7 +217,7 @@ impl MemoryManager {
 }
 
 #[async_trait]
-impl MemoryItemRepo for MemoryManager {
+impl<R: Reranker> MemoryItemRepo for MemoryManager<R> {
     async fn insert(&self, item: &MemoryItem) -> anyhow::Result<()> {
         let embedding_json = item
             .embedding

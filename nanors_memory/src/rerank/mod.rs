@@ -11,7 +11,6 @@ use nanors_core::memory::{MemoryItem, SalienceScore};
 use rayon::prelude::*;
 
 /// Trait for reranking search results.
-#[async_trait::async_trait]
 pub trait Reranker: Send + Sync {
     /// Rerank search results based on the query.
     ///

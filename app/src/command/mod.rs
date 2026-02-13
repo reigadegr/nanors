@@ -10,6 +10,7 @@ use nanors_core::{
     AgentConfig, AgentLoop, DEFAULT_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT_WITH_MEMORY,
 };
 use nanors_memory::MemoryManager;
+use nanors_memory::rerank::RuleBasedReranker;
 use nanors_providers::ZhipuProvider;
 use std::sync::Arc;
 use tracing::info;
@@ -28,7 +29,8 @@ pub async fn init_common_components() -> anyhow::Result<CommonComponents> {
     let config = Config::load()?;
     let provider = ZhipuProvider::new(config.providers.zhipu.api_key.clone());
     info!("Connecting to database");
-    let memory_manager = Arc::new(MemoryManager::new(&config.database.url).await?);
+    let memory_manager =
+        Arc::new(MemoryManager::<RuleBasedReranker>::new(&config.database.url).await?);
     Ok(CommonComponents {
         provider,
         memory_manager,

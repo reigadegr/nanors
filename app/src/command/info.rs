@@ -1,6 +1,7 @@
 use nanors_config::Config;
 use nanors_core::retrieval::adaptive::CutoffStrategy;
 use nanors_memory::MemoryManager;
+use nanors_memory::rerank::RuleBasedReranker;
 use tracing::info;
 
 /// Strategy for displaying configuration information.
@@ -42,7 +43,7 @@ impl super::CommandStrategy for InfoStrategy {
         println!("  URL: {}", mask_database_url(db_url));
 
         info!("Testing database connection");
-        match MemoryManager::new(db_url).await {
+        match MemoryManager::<RuleBasedReranker>::new(db_url).await {
             Ok(_) => {
                 println!("  Status: Connected");
             }

@@ -7,7 +7,7 @@ use crate::manager::MemoryManager;
 use nanors_entities::sessions;
 
 #[async_trait]
-impl SessionStorage for MemoryManager {
+impl<R: crate::rerank::Reranker> SessionStorage for MemoryManager<R> {
     async fn get_or_create(&self, id: &Uuid) -> anyhow::Result<Session> {
         let session_model = sessions::Entity::find_by_id(*id).one(&self.db).await?;
 
