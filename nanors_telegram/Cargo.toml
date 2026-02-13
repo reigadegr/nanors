@@ -2,21 +2,25 @@
 name = "nanors_telegram"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
 
 [dependencies]
-nanors_core = { workspace = true }
-nanors_providers = { workspace = true }
-nanors_config = { workspace = true }
-nanors_memory = { workspace = true }
-nanors_tools = { workspace = true }
+nanors_core.workspace = true
+nanors_providers.workspace = true
+nanors_config.workspace = true
+nanors_memory.workspace = true
+nanors_tools.workspace = true
 
 chrono.workspace = true
 
 dptree.workspace = true
-teloxide = { workspace = true }
-tokio = { workspace = true }
-anyhow = { workspace = true }
-thiserror = { workspace = true }
-tracing = { workspace = true }
-serde = { workspace = true }
-uuid = { workspace = true }
+teloxide.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+serde.workspace = true
+uuid.workspace = true
