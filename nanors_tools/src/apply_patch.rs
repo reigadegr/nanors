@@ -207,6 +207,7 @@ fn apply_patch_to_file(
     let original_content = std::fs::read_to_string(&full_path)
         .map_err(|e| anyhow::anyhow!("Failed to read file: {e}"))?;
 
+    let has_trailing_newline = original_content.ends_with('\n');
     let original_lines: Vec<&str> = original_content.lines().collect();
     let mut new_lines: Vec<String> = original_lines.iter().map(|&s| s.to_string()).collect();
     let mut line_offset = 0isize;
@@ -217,8 +218,7 @@ fn apply_patch_to_file(
     let mut remaining_new = hunk_info.new_count;
 
     while *line_idx < diff_lines.len()
-        && remaining_old > 0
-        && remaining_new > 0
+        && (remaining_old > 0 || remaining_new > 0)
         && !diff_lines[*line_idx].starts_with("--- ")
     {
         let line = diff_lines[*line_idx];
@@ -274,7 +274,10 @@ fn apply_patch_to_file(
         *line_idx += 1;
     }
 
-    let new_content = new_lines.join("\n");
+    let mut new_content = new_lines.join("\n");
+    if has_trailing_newline {
+        new_content.push('\n');
+    }
     std::fs::write(&full_path, new_content)
         .map_err(|e| anyhow::anyhow!("Failed to write file: {e}"))?;
 
@@ -293,8 +296,7 @@ fn apply_hunk_to_lines(
     let mut remaining_new = hunk_info.new_count;
 
     while *line_idx < diff_lines.len()
-        && remaining_old > 0
-        && remaining_new > 0
+        && (remaining_old > 0 || remaining_new > 0)
         && !diff_lines[*line_idx].starts_with("--- ")
         && !diff_lines[*line_idx].starts_with("@@ ")
     {
@@ -346,7 +348,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_apply_patch_simple() {
-        let dir = std::env::temp_dir().join(format!("nanors_patch_{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("nanors_patch_{}", uuid::Uuid::now_v7()));
         std::fs::create_dir_all(&dir).unwrap();
 
         let file = dir.join("test.txt");
@@ -377,7 +379,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_apply_patch_add_line() {
-        let dir = std::env::temp_dir().join(format!("nanors_patch_{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("nanors_patch_{}", uuid::Uuid::now_v7()));
         std::fs::create_dir_all(&dir).unwrap();
 
         let file = dir.join("test.txt");
@@ -408,7 +410,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_apply_patch_delete_line() {
-        let dir = std::env::temp_dir().join(format!("nanors_patch_{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("nanors_patch_{}", uuid::Uuid::now_v7()));
         std::fs::create_dir_all(&dir).unwrap();
 
         let file = dir.join("test.txt");
