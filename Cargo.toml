@@ -70,6 +70,7 @@ teloxide = { version = "0.17", default-features = false, features = [
 dptree = "0.5"
 glob = "0.3"
 diffy = "0.4"
+url = { version = "2.5", features = ["serde"] }
 
 [profile.dev]
 debug = true

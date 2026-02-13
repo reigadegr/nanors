@@ -1747,10 +1747,12 @@ dependencies = [
  "diffy",
  "glob",
  "regex",
+ "reqwest 0.13.2",
  "serde",
  "serde_json",
  "tokio",
  "tracing",
+ "url",
  "uuid",
 ]
 

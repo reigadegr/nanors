@@ -9,7 +9,7 @@
 | 功能 | 状态 | 备注 |
 |------|------|------|
 | Skills 系统 | 未操作 | 动态技能插件架构 |
-| web_fetch 工具 | 未操作 | HTTP 网页抓取工具 |
+| web_fetch 工具 | 测试完成 | HTTP 网页抓取工具 |
 | web_search 工具 | 未操作 | 网络搜索工具 |
 | Cron 调度器 | 未操作 | 定时任务调度器 |
 
@@ -2199,11 +2199,11 @@ url = "2.5"
 ### Phase 1: 基础工具 (Week 1)
 
 1. **web_fetch 工具**
-   - [ ] 创建 `nanors_tools/src/web_fetch.rs`
-   - [ ] 实现基础 HTTP 抓取
-   - [ ] 实现 HTML 转纯文本
-   - [ ] 添加测试
-   - [ ] 更新配置
+   - [x] 创建 `nanors_tools/src/web_fetch.rs`
+   - [x] 实现基础 HTTP 抓取
+   - [x] 实现 HTML 转纯文本
+   - [x] 添加测试
+   - [x] 更新配置
 
 2. **web_search 工具**
    - [ ] 创建 `nanors_tools/src/web_search.rs`

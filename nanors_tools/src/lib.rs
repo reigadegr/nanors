@@ -5,6 +5,7 @@ pub mod glob;
 pub mod grep;
 pub mod path_guard;
 pub mod read_file;
+pub mod web_fetch;
 
 // Re-export tool types for convenience
 pub use apply_patch::ApplyPatchTool;
@@ -12,6 +13,7 @@ pub use bash::BashTool;
 pub use glob::GlobTool;
 pub use grep::GrepTool;
 pub use read_file::ReadFileTool;
+pub use web_fetch::{WebFetchConfig, WebFetchTool};
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -108,6 +110,9 @@ impl ToolRegistry {
     }
 
     /// Create a new registry with all default tools registered.
+    ///
+    /// # Panics
+    /// Panics if HTTP client creation for `WebFetchTool` fails.
     #[must_use]
     pub fn with_default_tools(working_dir: &str) -> Self {
         let mut registry = Self::new();
@@ -116,6 +121,9 @@ impl ToolRegistry {
         registry.add_tool(Box::new(ApplyPatchTool::new(working_dir)));
         registry.add_tool(Box::new(GlobTool::new(working_dir)));
         registry.add_tool(Box::new(GrepTool::new(working_dir)));
+        registry.add_tool(Box::new(
+            WebFetchTool::new(WebFetchConfig::default()).expect("Failed to create WebFetchTool"),
+        ));
         registry
     }
 
