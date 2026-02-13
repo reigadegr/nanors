@@ -1,5 +1,5 @@
 use nanors_core::AgentLoop;
-use nanors_tools::ToolRegistry;
+use nanors_tools::StaticToolRegistry;
 use uuid::Uuid;
 
 use super::{build_agent_config, init_common_components};
@@ -49,7 +49,7 @@ impl super::CommandStrategy for AgentStrategy {
         // Register tools (always enabled)
         let working_dir = input.working_dir.unwrap_or_else(|| ".".to_string());
 
-        let registry = ToolRegistry::with_default_tools(&working_dir);
+        let registry = StaticToolRegistry::with_default_tools(&working_dir);
 
         eprintln!("🔧 Tool calling enabled with 6 tools");
 

@@ -62,7 +62,7 @@ where
     running: Arc<AtomicBool>,
     memory_manager: Option<Arc<dyn MemoryItemRepo>>,
     retrieval_config: RetrievalConfig,
-    tools: Option<nanors_tools::ToolRegistry>,
+    tools: Option<nanors_tools::StaticToolRegistry>,
     max_tool_iterations: usize,
     /// Maximum number of messages to keep in context history
     history_limit: usize,
@@ -106,7 +106,7 @@ where
 
     /// Set the tools registry for tool calling.
     #[must_use]
-    pub fn with_tools(mut self, tools: nanors_tools::ToolRegistry) -> Self {
+    pub fn with_tools(mut self, tools: nanors_tools::StaticToolRegistry) -> Self {
         self.tools = Some(tools);
         self
     }
