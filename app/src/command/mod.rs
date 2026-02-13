@@ -5,16 +5,12 @@
 //! with its own type, enabling compile-time optimization and zero runtime overhead.
 
 use nanors_config::Config;
-use nanors_conversation::ConversationConfig;
-use nanors_core::{
-    AgentConfig, AgentLoop, DEFAULT_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT_WITH_MEMORY,
-};
+use nanors_core::{AgentConfig, AgentLoop};
 use nanors_memory::MemoryManager;
 use nanors_memory::rerank::RuleBasedReranker;
 use nanors_providers::ZhipuProvider;
 use std::sync::Arc;
 use tracing::info;
-use uuid::Uuid;
 
 /// Common components initialized for commands.
 #[derive(Clone)]
@@ -47,40 +43,7 @@ pub fn build_agent_config(config: &Config, model_override: Option<String>) -> Ag
     }
 }
 
-/// Build `ConversationConfig` from config with parameters.
-pub fn build_conversation_config(
-    config: &Config,
-    session_id: Uuid,
-    session_name: Option<String>,
-    model_override: Option<String>,
-    history_limit_override: Option<usize>,
-    use_memory_prompt: bool,
-) -> ConversationConfig {
-    let default_prompt = if use_memory_prompt {
-        DEFAULT_SYSTEM_PROMPT_WITH_MEMORY
-    } else {
-        DEFAULT_SYSTEM_PROMPT
-    };
-
-    ConversationConfig {
-        session_id,
-        session_name,
-        model: model_override.unwrap_or_else(|| config.agents.defaults.model.clone()),
-        system_prompt: config
-            .agents
-            .defaults
-            .system_prompt
-            .clone()
-            .unwrap_or_else(|| default_prompt.to_string()),
-        history_limit: history_limit_override
-            .unwrap_or_else(|| config.agents.defaults.history_limit.unwrap_or(20)),
-        temperature: config.agents.defaults.temperature,
-        max_tokens: config.agents.defaults.max_tokens,
-    }
-}
-
 mod agent;
-mod chat;
 mod info;
 mod init;
 mod telegram;
@@ -113,7 +76,6 @@ fn setup_memory_storage(
 }
 
 pub use agent::{AgentInput, AgentStrategy};
-pub use chat::{ChatInput, ChatStrategy};
 pub use info::InfoStrategy;
 pub use init::InitStrategy;
 pub use telegram::{TelegramInput, TelegramStrategy};

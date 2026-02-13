@@ -107,7 +107,6 @@ dependencies = [
  "clap",
  "dirs",
  "nanors_config",
- "nanors_conversation",
  "nanors_core",
  "nanors_memory",
  "nanors_providers",
@@ -1659,24 +1658,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nanors_conversation"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "nanors_core",
- "nanors_memory",
- "nanors_providers",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "nanors_core"
 version = "0.1.0"
 dependencies = [
@@ -1745,7 +1726,6 @@ dependencies = [
  "chrono",
  "dptree",
  "nanors_config",
- "nanors_conversation",
  "nanors_core",
  "nanors_memory",
  "nanors_providers",

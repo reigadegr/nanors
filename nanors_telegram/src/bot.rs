@@ -35,7 +35,7 @@ pub struct TelegramBot {
     pub memory_manager: Arc<MemoryManager>,
     /// Configuration
     pub config: Config,
-    /// Session mapping: `chat_id` -> (`session_id`, `conversation_manager`)
+    /// Session mapping: `chat_id` -> session data
     sessions: Arc<tokio::sync::Mutex<HashMap<i64, SessionData>>>,
     /// Allowed chat IDs
     allowed_chats: Vec<i64>,

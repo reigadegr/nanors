@@ -6,7 +6,6 @@ members = [
   "nanors_config",
   "nanors_entities",
   "nanors_memory",
-  "nanors_conversation",
   "nanors_telegram",
   "nanors_tools",
 ]
@@ -30,7 +29,6 @@ nanors_providers = { path = "nanors_providers" }
 nanors_config = { path = "nanors_config" }
 nanors_entities = { path = "nanors_entities" }
 nanors_memory = { path = "nanors_memory" }
-nanors_conversation = { path = "nanors_conversation" }
 nanors_telegram = { path = "nanors_telegram" }
 nanors_tools = { path = "nanors_tools" }
 
