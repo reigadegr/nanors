@@ -109,7 +109,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_file_success() {
-        let dir = std::env::temp_dir().join(format!("nanors_rf_{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("nanors_rf_{}", uuid::Uuid::now_v7()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("test.txt");
         std::fs::write(&file, "line1\nline2\nline3\nline4\nline5").unwrap();

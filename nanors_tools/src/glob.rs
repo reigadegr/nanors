@@ -109,7 +109,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_glob_finds_files() {
-        let dir = std::env::temp_dir().join(format!("nanors_glob_{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("nanors_glob_{}", uuid::Uuid::now_v7()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("a.txt"), "").unwrap();
         std::fs::write(dir.join("b.txt"), "").unwrap();
@@ -129,7 +129,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_glob_no_matches() {
-        let dir = std::env::temp_dir().join(format!("nanors_glob2_{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("nanors_glob2_{}", uuid::Uuid::now_v7()));
         std::fs::create_dir_all(&dir).unwrap();
 
         let tool = GlobTool::new(".");

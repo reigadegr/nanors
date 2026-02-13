@@ -172,7 +172,7 @@ mod tests {
     use serde_json::json;
 
     fn setup_grep_dir() -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("nanors_grep_{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("nanors_grep_{}", uuid::Uuid::now_v7()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("hello.rs"),
