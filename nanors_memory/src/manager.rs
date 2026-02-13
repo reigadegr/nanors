@@ -59,7 +59,7 @@ impl<R: Reranker> MemoryManager<R> {
     ///
     /// # async fn example() -> anyhow::Result<()> {
     /// // With rule-based reranker (default)
-    /// let manager = MemoryManager::with_reranker(
+    /// let manager = MemoryManager::<RuleBasedReranker>::with_reranker(
     ///     "postgresql://...",
     ///     RuleBasedReranker::new()
     /// ).await?;
