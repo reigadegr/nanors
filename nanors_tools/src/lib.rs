@@ -1,19 +1,17 @@
+pub mod apply_patch;
 pub mod bash;
 pub mod command_runner;
-pub mod edit_file;
 pub mod glob;
 pub mod grep;
 pub mod path_guard;
 pub mod read_file;
-pub mod write_file;
 
 // Re-export tool types for convenience
+pub use apply_patch::ApplyPatchTool;
 pub use bash::BashTool;
-pub use edit_file::EditFileTool;
 pub use glob::GlobTool;
 pub use grep::GrepTool;
 pub use read_file::ReadFileTool;
-pub use write_file::WriteFileTool;
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -115,8 +113,7 @@ impl ToolRegistry {
         let mut registry = Self::new();
         registry.add_tool(Box::new(BashTool::new(working_dir)));
         registry.add_tool(Box::new(ReadFileTool::new(working_dir)));
-        registry.add_tool(Box::new(WriteFileTool::new(working_dir)));
-        registry.add_tool(Box::new(EditFileTool::new(working_dir)));
+        registry.add_tool(Box::new(ApplyPatchTool::new(working_dir)));
         registry.add_tool(Box::new(GlobTool::new(working_dir)));
         registry.add_tool(Box::new(GrepTool::new(working_dir)));
         registry
