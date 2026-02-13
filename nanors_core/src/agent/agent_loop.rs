@@ -64,6 +64,8 @@ where
     retrieval_config: RetrievalConfig,
     tools: Option<nanors_tools::ToolRegistry>,
     max_tool_iterations: usize,
+    /// Maximum number of messages to keep in context history
+    history_limit: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -98,6 +100,7 @@ where
             retrieval_config: RetrievalConfig::default(),
             tools: None,
             max_tool_iterations: 10,
+            history_limit: 20,
         }
     }
 
@@ -126,6 +129,13 @@ where
     #[must_use]
     pub const fn with_retrieval_config(mut self, retrieval_config: RetrievalConfig) -> Self {
         self.retrieval_config = retrieval_config;
+        self
+    }
+
+    /// Set history limit for context.
+    #[must_use]
+    pub const fn with_history_limit(mut self, limit: usize) -> Self {
+        self.history_limit = limit;
         self
     }
 
@@ -170,18 +180,26 @@ where
             return self.process_message_with_tools(session_id, content).await;
         }
 
+        // Load session history
+        let session = self.session_manager.get_or_create(session_id).await?;
+        let history = &session.messages;
+
+        // Get last N messages for context
+        let history_start = history.len().saturating_sub(self.history_limit);
+        let history_messages: Vec<ChatMessage> = history[history_start..].to_vec();
+
         let system_prompt = self.build_system_prompt(content).await;
 
-        let messages = vec![
-            ChatMessage {
-                role: Role::System,
-                content: MessageContent::Text(system_prompt),
-            },
-            ChatMessage {
-                role: Role::User,
-                content: MessageContent::Text(content.to_string()),
-            },
-        ];
+        // Build messages: system prompt + history + current message
+        let mut messages = vec![ChatMessage {
+            role: Role::System,
+            content: MessageContent::Text(system_prompt),
+        }];
+        messages.extend(history_messages);
+        messages.push(ChatMessage {
+            role: Role::User,
+            content: MessageContent::Text(content.to_string()),
+        });
 
         // Log messages being sent to the LLM
         for (i, msg) in messages.iter().enumerate() {
@@ -210,23 +228,30 @@ where
         session_id: &Uuid,
         content: &str,
     ) -> anyhow::Result<String> {
+        // Load session history
+        let session = self.session_manager.get_or_create(session_id).await?;
+        let history = &session.messages;
+
+        // Get last N messages for context
+        let history_start = history.len().saturating_sub(self.history_limit);
+        let history_messages: Vec<ChatMessage> = history[history_start..].to_vec();
+
         let system_prompt = self.build_system_prompt(content).await;
         let Some(tools) = self.tools.as_ref() else {
             anyhow::bail!("Tool calling requested but no tools available")
         };
         let tool_definitions = tools.definitions();
 
-        // Build conversation
-        let mut messages = vec![
-            ChatMessage {
-                role: Role::System,
-                content: MessageContent::Text(system_prompt),
-            },
-            ChatMessage {
-                role: Role::User,
-                content: MessageContent::Text(content.to_string()),
-            },
-        ];
+        // Build conversation: system prompt + history + current message
+        let mut messages = vec![ChatMessage {
+            role: Role::System,
+            content: MessageContent::Text(system_prompt),
+        }];
+        messages.extend(history_messages);
+        messages.push(ChatMessage {
+            role: Role::User,
+            content: MessageContent::Text(content.to_string()),
+        });
 
         // Tool calling loop
         for iteration in 0..self.max_tool_iterations {
