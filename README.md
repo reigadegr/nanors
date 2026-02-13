@@ -7,10 +7,10 @@ nanors 的 Rust 实现，采用渐进式开发策略和 workspace 架构。
 本项目采用 workspace 架构，按功能拆分为多个 crate：
 
 - **app**: CLI 入口
-- **nanors_core**: 核心抽象（agent, tools, 配置）
+- **nanors_core**: 核心抽象（agent, traits, 消息类型）
 - **nanors_providers**: LLM Provider 实现（智谱 GLM）
-- **nanors_conversation**: 多轮对话管理（持久化会话）
-- **nanors_memory**: 长期记忆管理（向量检索 + Rerank）
+- **nanors_memory**: 会话与记忆管理（持久化 + 语义检索）
+- **nanors_tools**: 工具调用框架（bash, file, glob, grep, patch）
 - **nanors_entities**: 数据库实体（Sea-ORM 生成）
 - **nanors_config**: 配置管理
 - **nanors_telegram**: Telegram Bot 集成
@@ -25,39 +25,66 @@ nanors/
 │       ├── main.rs
 │       └── command/      # 命令实现
 │           ├── mod.rs
-│           ├── agent.rs  # 单轮对话命令
-│           └── chat.rs   # 多轮对话命令（新）
+│           ├── agent.rs   # Agent 命令
+│           ├── init.rs    # 初始化
+│           ├── info.rs    # 配置信息
+│           ├── telegram.rs # Telegram bot
+│           └── version.rs # 版本显示
 ├── nanors_core/          # 核心抽象
-│   ├── src/lib.rs
-│   ├── src/agent/
-│   └── src/tools/
-├── nanors_providers/      # LLM Provider (智谱 GLM)
 │   └── src/
-├── nanors_conversation/   # 多轮对话管理（新）
+│       ├── lib.rs        # Role, ChatMessage, LLMProvider, SessionStorage
+│       ├── agent/        # AgentLoop, AgentConfig
+│       ├── memory/       # MemoryItem, MemoryItemRepo
+│       ├── retrieval/    # 检索配置
+│       └── util.rs       # 系统提示词
+├── nanors_providers/    # LLM Provider (智谱 GLM)
 │   └── src/
-│       ├── manager.rs    # ConversationManager
-│       ├── history.rs    # HistoryManager
-│       └── session.rs    # 会话状态
-├── nanors_memory/         # 长期记忆管理
+│       ├── zhipu.rs      # ZhipuProvider
+│       └── retry.rs      # 重试逻辑
+├── nanors_memory/       # 会话与记忆管理
 │   └── src/
-│       ├── mod.rs
-│       ├── rerank/       # 检索重排序
-│       └── query/        # 问题类型检测
-├── nanors_entities/       # 数据库实体
-│   └── src/              # Sea-ORM 生成
-└── nanors_config/        # 配置管理
+│       ├── manager.rs    # MemoryManager (SessionStorage impl)
+│       ├── session.rs    # 会话管理
+│       ├── convert.rs    # 类型转换
+│       ├── dedup.rs      # 去重
+│       ├── scoring.rs    # 重要性评分
+│       ├── query/        # 查询检测
+│       └── rerank/      # 检索重排序
+├── nanors_tools/        # 工具调用框架
+│   └── src/
+│       ├── lib.rs        # Tool trait, ToolRegistry
+│       ├── bash.rs       # BashTool
+│       ├── read_file.rs  # ReadFileTool
+│       ├── apply_patch.rs # ApplyPatchTool
+│       ├── glob.rs       # GlobTool
+│       ├── grep.rs       # GrepTool
+│       ├── command_runner.rs
+│       └── path_guard.rs
+├── nanors_telegram/     # Telegram Bot
+│   └── src/
+│       ├── bot.rs        # TelegramBot
+│       ├── handler.rs    # 消息处理
+│       ├── command.rs    # 命令定义
+│       └── error.rs      # 错误类型
+├── nanors_entities/     # 数据库实体
+│   └── src/             # Sea-ORM 生成
+│       ├── sessions.rs
+│       └── memory_items.rs
+└── nanors_config/       # 配置管理
     └── src/
+        └── schema.rs    # Config 及各配置结构体
 ```
 
 ## 配置和数据文件
 
-所有配置和数据文件统一放在 `~/.nanors` 目录：
+配置文件统一放在 `~/.nanors` 目录：
 
 ```
 ~/.nanors/
-├── config.json          # 配置文件（必需，init 时创建）
-└── sessions.db         # 数据库文件（自动创建）
+└── config.json          # 配置文件（必需，init 时创建）
 ```
+
+数据库连接配置在 `config.json` 的 `database.url` 字段中，默认使用 IvorySQL/PostgreSQL。
 
 ## 技术栈
 
@@ -113,7 +140,7 @@ nanors init
 {
   "agents": {
     "defaults": {
-      "model": "glm-4-flash",
+      "model": "glm-4.7-flash",
       "max_tokens": 8192,
       "temperature": 0.7,
       "system_prompt": "You are a helpful AI assistant with memory of past conversations. Provide clear, concise responses.",
@@ -129,18 +156,13 @@ nanors init
     "url": "postgresql://reigadegr:1234@localhost:5432/nanors"
   },
   "memory": {
-    "default_user_scope": "default",
     "retrieval": {
-      "items_top_k": 10,
-      "context_target_length": 2000,
-      "adaptive": {
-        "min_results": 5,
-        "max_results": 100000
-      }
+      "items_top_k": 5,
+      "context_target_length": 2000
     }
   },
   "telegram": {
-    "token": "your-telegram-bot-token-here",
+    "token": "",
     "allow_from": []
   }
 }
@@ -150,25 +172,26 @@ nanors init
 
 | 字段 | 说明 | 默认值 |
 |------|------|--------|
-| `agents.defaults.model` | 使用的模型 | `glm-4-flash` |
+| `agents.defaults.model` | 使用的模型 | `glm-4.7-flash` |
 | `agents.defaults.max_tokens` | 最大 token 数 | `8192` |
 | `agents.defaults.temperature` | 温度参数 | `0.7` |
-| `agents.defaults.history_limit` | 多轮对话历史条数 | `20` |
+| `agents.defaults.history_limit` | 历史记录条数 | `20` |
 | `database.url` | 数据库连接 URL | PostgreSQL 格式 |
+| `memory.retrieval.items_top_k` | 检索返回的条目数 | `5` |
+| `memory.retrieval.context_target_length` | 目标上下文长度 | `2000` |
 
 ### Telegram Bot 配置
 
 | 字段 | 说明 | 默认值 |
 |------|------|--------|
-| `telegram.enabled` | 是否启用 Telegram Bot | `false` |
 | `telegram.token` | Bot Token（从 @BotFather 获取） | 空 |
 | `telegram.allow_from` | 允许的用户/群组 ID 列表（空=全部允许） | `[]` |
 
 ### 3. 运行
 
-#### 单轮对话（无状态）
+#### Agent 命令
 
-交互式对话（工具调用默认开启）：
+交互式对话（带记忆功能、工具调用）：
 
 ```bash
 nanors agent
@@ -192,43 +215,11 @@ nanors agent -m "你好" --model glm-4.7
 nanors agent -d /path/to/project
 ```
 
-#### 多轮对话（持久化会话）**新功能**
-
-启动带会话持久化的对话：
-
-```bash
-nanors chat
-```
-
-指定会话名称：
-
-```bash
-nanors chat --name "项目讨论"
-```
-
-恢复已有会话：
-
-```bash
-nanors chat --session <SESSION_ID>
-```
-
-单次消息发送（非交互模式）：
-
-```bash
-nanors chat -m "接着刚才的话题继续"
-```
-
-自定义历史记录条数：
-
-```bash
-nanors chat --history-limit 50
-```
-
 ## 命令说明
 
-### `nanors agent` - 单轮对话
+### `nanors agent` - AI 对话
 
-运行 AI 助手（无状态模式，每次对话独立）。工具调用默认开启。
+运行 AI 助手，带记忆功能和工具调用。
 
 **选项：**
 - `-m, --message <MESSAGE>`: 发送单次消息
@@ -237,9 +228,8 @@ nanors chat --history-limit 50
 
 **工具调用（默认开启）：**
 - `bash` - 执行 shell 命令
-- `read_file` - 读取文件
-- `write_file` - 写入文件
-- `edit_file` - 编辑文件
+- `read_file` - 读取文件内容
+- `apply_patch` - 应用补丁（类似 diff/patch）
 - `glob` - 文件模式匹配
 - `grep` - 内容搜索
 
@@ -259,43 +249,13 @@ nanors agent -m "你好" -M glm-4.7
 nanors agent -d /path/to/project
 ```
 
-### `nanors chat` - 多轮对话 **新功能**
-
-运行持久化会话的多轮对话（会话状态自动保存）。
-
-**选项：**
-- `-m, --message <MESSAGE>`: 发送单次消息（非交互模式）
-- `-M, --model <MODEL>`: 指定使用的模型
-- `--name <NAME>`: 设置会话名称
-- `--session <SESSION_ID>`: 恢复已有会话
-- `--history-limit <N>`: 设置历史记录条数
-
-**示例：**
-
-```bash
-# 启动新的多轮对话
-nanors chat
-
-# 命名会话
-nanors chat --name "学习 Rust"
-
-# 恢复已有会话
-nanors chat --session 0193abcd-1234-5678-9012-abcdef123456
-
-# 单次消息（会话继续）
-nanors chat -m "继续刚才的话题"
-
-# 设置历史记录条数
-nanors chat --history-limit 50
-```
-
 **特性：**
 - 会话自动保存到数据库
-- 支持上下文记忆（可配置历史窗口）
-- 支持会话恢复
+- 支持语义记忆检索（可配置检索参数）
 - Token 使用统计
+- 工具调用支持
 
-### `nanors telegram` - Telegram Bot **新功能**
+### `nanors telegram` - Telegram Bot
 
 启动 Telegram Bot，持续监听并响应 Telegram 消息。工具调用默认开启。
 
@@ -305,9 +265,8 @@ nanors chat --history-limit 50
 
 **工具调用（默认开启）：**
 - `bash` - 执行 shell 命令
-- `read_file` - 读取文件
-- `write_file` - 写入文件
-- `edit_file` - 编辑文件
+- `read_file` - 读取文件内容
+- `apply_patch` - 应用补丁（类似 diff/patch）
 - `glob` - 文件模式匹配
 - `grep` - 内容搜索
 
@@ -365,6 +324,14 @@ nanors init
 nanors version
 ```
 
+### `nanors info`
+
+显示配置信息（当前使用的模型、数据库连接等）。
+
+```bash
+nanors info
+```
+
 ## 开发
 
 ### 构建
@@ -406,31 +373,30 @@ cargo build --release
 export RUSTFLAGS="-Z function-sections=yes -C link-arg=-fuse-ld=/usr/bin/mold -C link-args=-Wl,--gc-sections,--as-needed"
 ```
 
-## 第一阶段功能
+## 功能
 
-- ✅ CLI 工具
-- ✅ 智谱 GLM 集成
-- ✅ SQLite 会话持久化（Sea-ORM）
+### 核心
+- ✅ CLI 工具（agent, init, version, info, telegram）
+- ✅ 智谱 GLM 集成（支持 glm-4.7-flash 等模型）
 - ✅ 工具调用框架（默认开启）
-  - bash、read_file、write_file、edit_file、glob、grep
-- ✅ Workspace 架构（6 个 crate）
+  - `bash` - 执行 shell 命令
+  - `read_file` - 读取文件内容
+  - `apply_patch` - 应用补丁（类似 diff/patch）
+  - `glob` - 文件模式匹配
+  - `grep` - 内容搜索
+- ✅ Workspace 架构（7 个 crate）
 - ✅ 完整的 clippy 检查（pedantic、nursery 等）
-- ✅ 生产级技术栈（与 pmi-rust-backend 一致）
 - ✅ 所有配置和数据统一在 `~/.nanors` 目录
 
-## 第二阶段功能（新增）
-
-- ✅ 多轮对话管理（`nanors_conversation`）
-  - 会话持久化
-  - 上下文历史管理
-  - 会话恢复支持
-  - Token 使用统计
-- ✅ 长期记忆管理（`nanors_memory`）
-  - 向量检索
+### 会话与记忆
+- ✅ 会话持久化（Sea-ORM + IvorySQL/PostgreSQL）
+- ✅ 语义记忆检索（可配置检索参数）
   - 问题类型检测
   - 智能重排序（Rerank）
-- ✅ IvorySQL/PostgreSQL 数据库支持
-- ✅ 0 clippy 警告（pedantic + nursery 标准）
+  - 重要性评分
+- ✅ Token 使用统计
+
+### Telegram Bot
 - ✅ Telegram Bot 集成（`nanors_telegram`）
   - 持续监听消息（long polling 模式）
   - 命令支持（/start, /reset, /help）
@@ -476,13 +442,14 @@ export RUSTFLAGS="-Z function-sections=yes -C link-arg=-fuse-ld=/usr/bin/mold -C
 
 默认使用 IvorySQL（兼容 PostgreSQL），可根据需要切换到其他数据库。
 
-## 文件结构
+## 配置文件位置
 
 ```
 ~/.nanors/
-├── config.json          # 配置文件（必需）
-└── sessions.db         # 数据库文件（自动创建）
+├── config.json          # 配置文件（必需，init 时创建）
 ```
+
+数据库连接配置在 `config.json` 的 `database.url` 字段中，默认使用 IvorySQL/PostgreSQL。
 
 ## 许可证
 
